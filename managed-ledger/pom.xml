@@ -72,6 +72,11 @@
       <artifactId>mockito-core</artifactId>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>org.apache.distributedlog</groupId>
+      <artifactId>distributedlog-core</artifactId>
+      <version>0.5.0-incubating-SNAPSHOT</version>
+    </dependency>
   </dependencies>
 
   <build>

@@ -1,0 +1,34 @@
+option java_package = "org.apache.bookkeeper.mledger.proto";
+option optimize_for = SPEED;
+
+message DlogBasedManagedLedgerInfo {
+
+}
+
+message DlogBasedPositionInfo {
+	required int64 logSegmentSequenceNo = 1;
+    required int64 entryId  = 2;
+    required int64 slotId  = 3;
+    //todo how to impl these deletedMessages?
+    repeated MessageRange individualDeletedMessages = 3;
+}
+
+message DLSN {
+    required int64 logSegmentSequenceNo = 1;
+    required int64 entryId  = 2;
+    required int64 slotId  = 3;
+}
+
+message DlogBasedMessageRange {
+    required DLSN lowerEndpoint = 1;
+    required DLSN upperEndpoint = 2;
+}
+
+message DlogBasedManagedCursorInfo {
+	//todo use dlog's logsegment id?
+	required int64 cursorsLedgerId = 1;
+
+	// Last snapshot of the mark-delete position
+	optional DLSN markDeletePosition = 2;
+	repeated DlogBasedMessageRange individualDeletedMessages = 3;
+}
