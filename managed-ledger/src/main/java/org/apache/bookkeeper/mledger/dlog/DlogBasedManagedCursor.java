@@ -10,6 +10,8 @@ import java.util.Set;
  * Created by yaoguangzhong on 2017/8/17.
  */
 public class DlogBasedManagedCursor implements ManagedCursor {
+
+
     @Override
     public String getName() {
         return null;

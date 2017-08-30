@@ -22,6 +22,9 @@ public class DlogBasedPosition implements Position, Comparable<DlogBasedPosition
     public static DlogBasedPosition get(long logSegmentSequenceNo, long entryId, long slotId) {
         return new DlogBasedPosition(logSegmentSequenceNo, entryId, slotId);
     }
+    public static DlogBasedPosition get(DLSN dlsn) {
+        return new DlogBasedPosition(dlsn);
+    }
 
     public static DlogBasedPosition get(DlogBasedPosition other) {
         return new DlogBasedPosition(other);
