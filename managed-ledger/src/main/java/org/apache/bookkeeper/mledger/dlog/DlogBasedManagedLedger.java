@@ -130,7 +130,6 @@ public class DlogBasedManagedLedger implements ManagedLedger {
     private final CallbackMutex ledgersListMutex = new CallbackMutex();
     private final CallbackMutex trimmerMutex = new CallbackMutex();
 
-    private volatile LedgerHandle currentLedger;
     private long currentLedgerEntries = 0;
     private long currentLedgerSize = 0;
     private long lastLedgerCreatedTimestamp = 0;
@@ -147,11 +146,8 @@ public class DlogBasedManagedLedger implements ManagedLedger {
 
     enum State {
         None, // Uninitialized
-        LedgerOpened, // A ledger is ready to write into
-        ClosingLedger, // Closing current ledger
-        ClosedLedger, // Current ledger has been closed and there's no pending
-        // operation
-        CreatingLedger, // Creating a new ledger
+        WriterOpened, // A log stream is ready to write into
+        CreatingWriter, // Creating a new ledger
         Closed, // ManagedLedger has been closed
         Fenced, // A managed ledger is fenced when there is some concurrent
         // access from a different session/machine. In this state the
@@ -493,52 +489,22 @@ public class DlogBasedManagedLedger implements ManagedLedger {
         DlogBasedOpAddEntry addOperation = DlogBasedOpAddEntry.create(this, buffer, asyncLogWriter,callback, ctx);
         pendingAddEntries.add(addOperation);
 
-        if (state == State.ClosingLedger || state == State.CreatingLedger) {
-            // We don't have a ready ledger to write into
-            // We are waiting for a new ledger to be created
+        if (state == State.CreatingWriter) {
+            // We don't have a ready writer to write into,
+            // We are in initializing phase and waiting for a writer to be created
             if (log.isDebugEnabled()) {
                 log.debug("[{}] Queue addEntry request", name);
             }
-        } else if (state == State.ClosedLedger) {
-            long now = System.currentTimeMillis();
-            if (now < lastLedgerCreationFailureTimestamp + WaitTimeAfterLedgerCreationFailureMs) {
-                // Deny the write request, since we haven't waited enough time since last attempt to create a new ledger
-                pendingAddEntries.remove(addOperation);
-                callback.addFailed(new ManagedLedgerException("Waiting for new ledger creation to complete"), ctx);
-                return;
-            }
+        }  else {
+            checkArgument(state == State.WriterOpened);
 
-            // No ledger and no pending operations. Create a new ledger
-            if (log.isDebugEnabled()) {
-                log.debug("[{}] Creating a new ledger", name);
-            }
-            if (STATE_UPDATER.compareAndSet(this, State.ClosedLedger, State.CreatingLedger)) {
-                this.lastLedgerCreationInitiationTimestamp = System.nanoTime();
-                mbean.startDataLedgerCreateOp();
-                bookKeeper.asyncCreateLedger(config.getEnsembleSize(), config.getWriteQuorumSize(),
-                        config.getAckQuorumSize(), config.getDigestType(), config.getPassword(), this, ctx);
-            }
-        } else {
-            checkArgument(state == State.LedgerOpened);
-
-            // Write into lastLedger
-            addOperation.setLedger(currentLedger);
 
             ++currentLedgerEntries;
             currentLedgerSize += buffer.readableBytes();
 
             if (log.isDebugEnabled()) {
-                log.debug("[{}] Write into current ledger lh={} entries={}", name, currentLedger.getId(),
+                log.debug("[{}] Write into current stream={} entries={}", name, asyncLogWriter.getStreamName(),
                         currentLedgerEntries);
-            }
-
-            if (currentLedgerIsFull()) {
-                if (log.isDebugEnabled()) {
-                    log.debug("[{}] Closing current ledger lh={}", name, currentLedger.getId());
-                }
-                // This entry will be the last added to current ledger
-                addOperation.setCloseWhenDone(true);
-                STATE_UPDATER.set(this, State.ClosingLedger);
             }
 
             addOperation.initiate();
@@ -648,7 +614,7 @@ public class DlogBasedManagedLedger implements ManagedLedger {
     @Override
     public synchronized void asyncDeleteCursor(final String consumerName, final DeleteCursorCallback callback,
                                                final Object ctx) {
-        final ManagedCursorImpl cursor = (ManagedCursorImpl) cursors.get(consumerName);
+        final DlogBasedManagedCursor cursor = (DlogBasedManagedCursor) cursors.get(consumerName);
         if (cursor == null) {
             callback.deleteCursorFailed(new ManagedLedgerException("ManagedCursor not found: " + consumerName), ctx);
             return;
@@ -656,14 +622,14 @@ public class DlogBasedManagedLedger implements ManagedLedger {
 
         // First remove the consumer form the MetaStore. If this operation succeeds and the next one (removing the
         // ledger from BK) don't, we end up having a loose ledger leaked but the state will be consistent.
-        store.asyncRemoveCursor(ManagedLedgerImpl.this.name, consumerName, new MetaStoreCallback<Void>() {
+        store.asyncRemoveCursor(DlogBasedManagedCursor.this.name, consumerName, new MetaStoreCallback<Void>() {
             @Override
             public void operationComplete(Void result, Stat stat) {
                 cursor.asyncDeleteCursorLedger();
                 cursors.removeCursor(consumerName);
 
                 // Redo invalidation of entries in cache
-                PositionImpl slowestConsumerPosition = cursors.getSlowestReaderPosition();
+                DlogBasedPosition slowestConsumerPosition = cursors.getSlowestReaderPosition();
                 if (slowestConsumerPosition != null) {
                     if (log.isDebugEnabled()) {
                         log.debug("Doing cache invalidation up to {}", slowestConsumerPosition);
@@ -724,7 +690,7 @@ public class DlogBasedManagedLedger implements ManagedLedger {
         checkManagedLedgerIsOpen();
         checkFenced();
 
-        return new NonDurableCursorImpl(bookKeeper, config, this, null, (PositionImpl) startCursorPosition);
+        return new NonDurableCursorImpl(bookKeeper, config, this, null, (DlogBasedPosition) startCursorPosition);
     }
 
     @Override
@@ -754,7 +720,7 @@ public class DlogBasedManagedLedger implements ManagedLedger {
     @Override
     public long getNumberOfActiveEntries() {
         long totalEntries = getNumberOfEntries();
-        PositionImpl pos = cursors.getSlowestReaderPosition();
+        DlogBasedPosition pos = cursors.getSlowestReaderPosition();
         if (pos == null) {
             // If there are no consumers, there are no active entries
             return 0;
@@ -786,7 +752,7 @@ public class DlogBasedManagedLedger implements ManagedLedger {
             ManagedCursor cursor = cursors.next();
             long backlogEntries = cursor.getNumberOfEntries();
             if (backlogEntries > maxActiveCursorBacklogEntries) {
-                PositionImpl readPosition = (PositionImpl) cursor.getReadPosition();
+                DlogBasedPosition readPosition = (DlogBasedPosition) cursor.getReadPosition();
                 readPosition = isValidPosition(readPosition) ? readPosition : getNextValidPosition(readPosition);
                 if (readPosition == null) {
                     if (log.isDebugEnabled()) {
@@ -834,7 +800,7 @@ public class DlogBasedManagedLedger implements ManagedLedger {
     @Override
     public long getEstimatedBacklogSize() {
 
-        PositionImpl pos = getMarkDeletePositionOfSlowestConsumer();
+        DlogBasedPosition pos = getMarkDeletePositionOfSlowestConsumer();
 
         while (true) {
             if (pos == null) {
@@ -900,21 +866,17 @@ public class DlogBasedManagedLedger implements ManagedLedger {
         log.info("[{}] Terminating managed ledger", name);
         state = State.Terminated;
 
-        LedgerHandle lh = currentLedger;
         if (log.isDebugEnabled()) {
-            log.debug("[{}] Closing current writing ledger {}", name, lh.getId());
+            log.debug("[{}] Closing current stream={}", name, asyncLogWriter.getStreamName());
         }
 
+        //todo change this stats
         mbean.startDataLedgerCloseOp();
-        lh.asyncClose((rc, lh1, ctx1) -> {
-            if (log.isDebugEnabled()) {
-                log.debug("[{}] Close complete for ledger {}: rc = {}", name, lh.getId(), rc);
-            }
-            mbean.endDataLedgerCloseOp();
-            if (rc != BKException.Code.OK) {
-                callback.terminateFailed(new ManagedLedgerException(BKException.getMessage(rc)), ctx);
-            } else {
-                lastConfirmedEntry = new PositionImpl(lh.getId(), lh.getLastAddConfirmed());
+        asyncLogWriter.asyncClose().whenComplete(new FutureEventListener<Void>() {
+            @Override
+            public void onSuccess(Void aVoid) {
+                //todo fetch lac
+                lastConfirmedEntry = new DlogBasedPosition(lastConfirmedEntry);
                 // Store the new state in metadata
                 store.asyncUpdateLedgerIds(name, getManagedLedgerInfo(), ledgersStat, new MetaStoreCallback<Void>() {
                     @Override
@@ -931,7 +893,14 @@ public class DlogBasedManagedLedger implements ManagedLedger {
                     }
                 });
             }
-        }, null);
+
+            @Override
+            public void onFailure(Throwable throwable) {
+                callback.terminateFailed(new ManagedLedgerException(throwable), ctx);
+
+            }
+        });
+
     }
 
     @Override
@@ -1338,7 +1307,7 @@ public class DlogBasedManagedLedger implements ManagedLedger {
         }
     }
 
-    void asyncReadEntry(PositionImpl position, ReadEntryCallback callback, Object ctx) {
+    void asyncReadEntry(DlogBasedPosition position, ReadEntryCallback callback, Object ctx) {
         LedgerHandle currentLedger = this.currentLedger;
         if (log.isDebugEnabled()) {
             log.debug("[{}] Reading entry ledger {}: {}", name, position.getLedgerId(), position.getEntryId());
@@ -1365,7 +1334,7 @@ public class DlogBasedManagedLedger implements ManagedLedger {
         long lastEntryInLedger;
         final ManagedCursorImpl cursor = opReadEntry.cursor;
 
-        PositionImpl lastPosition = lastConfirmedEntry;
+        DlogBasedPosition lastPosition = lastConfirmedEntry;
 
         if (ledger.getId() == lastPosition.getLedgerId()) {
             // For the current ledger, we only give read visibility to the last entry we have received a confirmation in
@@ -1403,7 +1372,7 @@ public class DlogBasedManagedLedger implements ManagedLedger {
 
         if (updateCursorRateLimit.tryAcquire()) {
             if (isCursorActive(cursor)) {
-                final PositionImpl lastReadPosition = PositionImpl.get(ledger.getId(), lastEntry);
+                final DlogBasedPosition lastReadPosition = DlogBasedPosition.get(ledger.getId(), lastEntry);
                 discardEntriesFromCache(cursor, lastReadPosition);
             }
         }
@@ -1414,8 +1383,8 @@ public class DlogBasedManagedLedger implements ManagedLedger {
         return mbean;
     }
 
-    boolean hasMoreEntries(PositionImpl position) {
-        PositionImpl lastPos = lastConfirmedEntry;
+    boolean hasMoreEntries(DlogBasedPosition position) {
+        DlogBasedPosition lastPos = lastConfirmedEntry;
         boolean result = position.compareTo(lastPos) <= 0;
         if (log.isDebugEnabled()) {
             log.debug("[{}] hasMoreEntries: pos={} lastPos={} res={}", name, position, lastPos, result);
@@ -1423,23 +1392,23 @@ public class DlogBasedManagedLedger implements ManagedLedger {
         return result;
     }
 
-    void discardEntriesFromCache(ManagedCursorImpl cursor, PositionImpl newPosition) {
-        Pair<PositionImpl, PositionImpl> pair = activeCursors.cursorUpdated(cursor, newPosition);
+    void discardEntriesFromCache(ManagedCursorImpl cursor, DlogBasedPosition newPosition) {
+        Pair<DlogBasedPosition, DlogBasedPosition> pair = activeCursors.cursorUpdated(cursor, newPosition);
         if (pair != null) {
             entryCache.invalidateEntries(pair.second);
         }
     }
 
-    void updateCursor(ManagedCursorImpl cursor, PositionImpl newPosition) {
-        Pair<PositionImpl, PositionImpl> pair = cursors.cursorUpdated(cursor, newPosition);
+    void updateCursor(ManagedCursorImpl cursor, DlogBasedPosition newPosition) {
+        Pair<DlogBasedPosition, DlogBasedPosition> pair = cursors.cursorUpdated(cursor, newPosition);
         if (pair == null) {
             // Cursor has been removed in the meantime
             trimConsumedLedgersInBackground();
             return;
         }
 
-        PositionImpl previousSlowestReader = pair.first;
-        PositionImpl currentSlowestReader = pair.second;
+        DlogBasedPosition previousSlowestReader = pair.first;
+        DlogBasedPosition currentSlowestReader = pair.second;
 
         if (previousSlowestReader.compareTo(currentSlowestReader) == 0) {
             // The slowest consumer has not changed position. Nothing to do right now
@@ -1452,12 +1421,12 @@ public class DlogBasedManagedLedger implements ManagedLedger {
         }
     }
 
-    PositionImpl startReadOperationOnLedger(PositionImpl position) {
+    DlogBasedPosition startReadOperationOnLedger(DlogBasedPosition position) {
         long ledgerId = ledgers.ceilingKey(position.getLedgerId());
         if (ledgerId != position.getLedgerId()) {
             // The ledger pointed by this position does not exist anymore. It was deleted because it was empty. We need
             // to skip on the next available ledger
-            position = new PositionImpl(ledgerId, 0);
+            position = new DlogBasedPosition(ledgerId, 0);
         }
 
         return position;
@@ -1746,14 +1715,14 @@ public class DlogBasedManagedLedger implements ManagedLedger {
             @Override
             public void operationComplete(Void result, Stat stat) {
                 log.info("[{}] Successfully deleted managed ledger", name);
-                factory.close(ManagedLedgerImpl.this);
+                factory.close(DlogBasedPosition.this);
                 callback.deleteLedgerComplete(ctx);
             }
 
             @Override
             public void operationFailed(MetaStoreException e) {
                 log.warn("[{}] Failed to delete managed ledger", name, e);
-                factory.close(ManagedLedgerImpl.this);
+                factory.close(DlogBasedPosition.this);
                 callback.deleteLedgerFailed(e, ctx);
             }
         });
@@ -1766,10 +1735,10 @@ public class DlogBasedManagedLedger implements ManagedLedger {
      *            the position range
      * @return the count of entries
      */
-    long getNumberOfEntries(Range<PositionImpl> range) {
-        PositionImpl fromPosition = range.lowerEndpoint();
+    long getNumberOfEntries(Range<DlogBasedPosition> range) {
+        DlogBasedPosition fromPosition = range.lowerEndpoint();
         boolean fromIncluded = range.lowerBoundType() == BoundType.CLOSED;
-        PositionImpl toPosition = range.upperEndpoint();
+        DlogBasedPosition toPosition = range.upperEndpoint();
         boolean toIncluded = range.upperBoundType() == BoundType.CLOSED;
 
         if (fromPosition.getLedgerId() == toPosition.getLedgerId()) {
@@ -1813,7 +1782,7 @@ public class DlogBasedManagedLedger implements ManagedLedger {
      *            specifies whether or not to include the start position in calculating the distance
      * @return the new position that is n entries ahead
      */
-    PositionImpl getPositionAfterN(final PositionImpl startPosition, long n, PositionBound startRange) {
+    DlogBasedPosition getPositionAfterN(final DlogBasedPosition startPosition, long n, PositionBound startRange) {
         long entriesToSkip = n;
         long currentLedgerId;
         long currentEntryId;
@@ -1823,7 +1792,7 @@ public class DlogBasedManagedLedger implements ManagedLedger {
             currentEntryId = startPosition.getEntryId();
         } else {
             // e.g. a mark-delete position
-            PositionImpl nextValidPosition = getNextValidPosition(startPosition);
+            DlogBasedPosition nextValidPosition = getNextValidPosition(startPosition);
             currentLedgerId = nextValidPosition.getLedgerId();
             currentEntryId = nextValidPosition.getEntryId();
         }
@@ -1862,7 +1831,7 @@ public class DlogBasedManagedLedger implements ManagedLedger {
             }
         }
 
-        PositionImpl positionToReturn = getPreviousPosition(PositionImpl.get(currentLedgerId, currentEntryId));
+        DlogBasedPosition positionToReturn = getPreviousPosition(DlogBasedPosition.get(currentLedgerId, currentEntryId));
         if (log.isDebugEnabled()) {
             log.debug("getPositionAfterN: Start position {}:{}, startIncluded: {}, Return position {}:{}",
                     startPosition.getLedgerId(), startPosition.getEntryId(), startRange, positionToReturn.getLedgerId(),
@@ -1880,9 +1849,9 @@ public class DlogBasedManagedLedger implements ManagedLedger {
      *            the current position
      * @return the previous position
      */
-    PositionImpl getPreviousPosition(PositionImpl position) {
+    DlogBasedPosition getPreviousPosition(DlogBasedPosition position) {
         if (position.getEntryId() > 0) {
-            return PositionImpl.get(position.getLedgerId(), position.getEntryId() - 1);
+            return DlogBasedPosition.get(position.getLedgerId(), position.getEntryId() - 1);
         }
 
         // The previous position will be the last position of an earlier ledgers
@@ -1890,19 +1859,19 @@ public class DlogBasedManagedLedger implements ManagedLedger {
 
         if (headMap.isEmpty()) {
             // There is no previous ledger, return an invalid position in the current ledger
-            return PositionImpl.get(position.getLedgerId(), -1);
+            return DlogBasedPosition.get(position.getLedgerId(), -1);
         }
 
         // We need to find the most recent non-empty ledger
         for (long ledgerId : headMap.descendingKeySet()) {
             LedgerInfo li = headMap.get(ledgerId);
             if (li.getEntries() > 0) {
-                return PositionImpl.get(li.getLedgerId(), li.getEntries() - 1);
+                return DlogBasedPosition.get(li.getLedgerId(), li.getEntries() - 1);
             }
         }
 
         // in case there are only empty ledgers, we return a position in the first one
-        return PositionImpl.get(headMap.firstEntry().getKey(), -1);
+        return DlogBasedPosition.get(headMap.firstEntry().getKey(), -1);
     }
 
     /**
@@ -1912,8 +1881,8 @@ public class DlogBasedManagedLedger implements ManagedLedger {
      *            the position to validate
      * @return true if the position is valid, false otherwise
      */
-    boolean isValidPosition(PositionImpl position) {
-        PositionImpl last = lastConfirmedEntry;
+    boolean isValidPosition(DlogBasedPosition position) {
+        DlogBasedPosition last = lastConfirmedEntry;
         if (log.isDebugEnabled()) {
             log.debug("IsValid position: {} -- last: {}", position, last);
         }
@@ -1967,7 +1936,7 @@ public class DlogBasedManagedLedger implements ManagedLedger {
         return ledgerId == null ? null : new PositionImpl(ledgerId, -1);
     }
 
-    PositionImpl getLastPosition() {
+    DlogBasedPosition getLastPosition() {
         return lastConfirmedEntry;
     }
 
@@ -1976,7 +1945,7 @@ public class DlogBasedManagedLedger implements ManagedLedger {
         return cursors.getSlowestReader();
     }
 
-    PositionImpl getMarkDeletePositionOfSlowestConsumer() {
+    DlogBasedPosition getMarkDeletePositionOfSlowestConsumer() {
         ManagedCursor slowestCursor = getSlowestConsumer();
         return slowestCursor == null ? null : (PositionImpl) slowestCursor.getMarkDeletedPosition();
     }
@@ -1984,8 +1953,8 @@ public class DlogBasedManagedLedger implements ManagedLedger {
     /**
      * Get the last position written in the managed ledger, alongside with the associated counter
      */
-    Pair<PositionImpl, Long> getLastPositionAndCounter() {
-        PositionImpl pos;
+    Pair<DlogBasedPosition, Long> getLastPositionAndCounter() {
+        DlogBasedPosition pos;
         long count;
 
         do {
