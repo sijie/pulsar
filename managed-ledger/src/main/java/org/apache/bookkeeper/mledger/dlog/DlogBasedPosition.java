@@ -4,7 +4,8 @@ import org.apache.bookkeeper.mledger.Position;
 import org.apache.distributedlog.DLSN;
 
 /**
- * manage dlog DLSN
+ * manage dlog DLSN, when entry aggregate buffer=1,
+ * LogSegmentSequenceNo-> ledgerId(bk), EntryId -> EntryId(pulsar)
  *
  */
 public class DlogBasedPosition implements Position, Comparable<DlogBasedPosition>{
@@ -35,6 +36,13 @@ public class DlogBasedPosition implements Position, Comparable<DlogBasedPosition
     public Position getNext() {
 
         return new DlogBasedPosition(dlsn.getNextDLSN());
+    }
+
+    public long getLedgerId(){
+        return dlsn.getLogSegmentSequenceNo();
+    }
+    public long getEntryId(){
+        return dlsn.getEntryId();
     }
 
     @Override

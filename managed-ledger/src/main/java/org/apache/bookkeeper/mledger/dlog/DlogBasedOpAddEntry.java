@@ -58,9 +58,6 @@ class DlogBasedOpAddEntry extends SafeRunnable implements FutureEventListener<DL
     }
 
 
-    public void setCloseWhenDone(boolean closeWhenDone) {
-        this.closeWhenDone = closeWhenDone;
-    }
 
     public void initiate() {
         ByteBuf duplicateBuffer = RecyclableDuplicateByteBuf.create(data);
