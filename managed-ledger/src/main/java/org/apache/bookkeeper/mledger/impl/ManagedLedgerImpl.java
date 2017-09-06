@@ -252,6 +252,7 @@ public class ManagedLedgerImpl implements ManagedLedger, CreateCallback {
                                         .setEntries(lh.getLastAddConfirmed() + 1).setSize(lh.getLength())
                                         .setTimestamp(System.currentTimeMillis()).build();
                                 ledgers.put(id, info);
+                                //why create the ledger when open succeed?
                                 initializeBookKeeper(callback);
                             } else if (rc == BKException.Code.NoSuchLedgerExistsException) {
                                 log.warn("[{}] Ledger not found: {}", name, ledgers.lastKey());
