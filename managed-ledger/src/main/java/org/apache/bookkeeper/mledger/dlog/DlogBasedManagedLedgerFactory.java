@@ -37,12 +37,11 @@ import org.apache.bookkeeper.mledger.ManagedLedgerInfo.CursorInfo;
 import org.apache.bookkeeper.mledger.ManagedLedgerInfo.LedgerInfo;
 import org.apache.bookkeeper.mledger.ManagedLedgerInfo.MessageRangeInfo;
 import org.apache.bookkeeper.mledger.ManagedLedgerInfo.PositionInfo;
-import org.apache.bookkeeper.mledger.impl.ManagedLedgerFactoryMBeanImpl;
 import org.apache.bookkeeper.mledger.dlog.DlogBasedManagedLedger.ManagedLedgerInitializeLedgerCallback;
 import org.apache.bookkeeper.mledger.dlog.DlogBasedManagedLedger.State;
-import org.apache.bookkeeper.mledger.impl.MetaStore;
-import org.apache.bookkeeper.mledger.impl.MetaStore.MetaStoreCallback;
-import org.apache.bookkeeper.mledger.impl.MetaStore.Stat;
+import org.apache.bookkeeper.mledger.dlog.DlogBasedMetaStore;
+import org.apache.bookkeeper.mledger.dlog.DlogBasedMetaStore.MetaStoreCallback;
+import org.apache.bookkeeper.mledger.dlog.DlogBasedMetaStore.Stat;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats.ManagedCursorInfo;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats.MessageRange;
@@ -63,9 +62,10 @@ import com.google.common.collect.Maps;
 import io.netty.util.concurrent.DefaultThreadFactory;
 
 public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
-    private final Namespace dlNamespace;
+
+    protected final ConcurrentHashMap<String, Namespace> dlNamespaces = new ConcurrentHashMap<>();
     private final DistributedLogConfiguration dlconfig;
-    private final MetaStore store;
+    private final DlogBasedMetaStore store;
     private final BookKeeper bookKeeper;
     private final boolean isBookkeeperManaged;
     private final ZooKeeper zookeeper;
@@ -75,7 +75,6 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
     private final OrderedSafeExecutor orderedExecutor = new OrderedSafeExecutor(16, "bookkeeper-ml-workers");
 
     protected final DlogBasedManagedLedgerFactoryMBean mbean;
-
     protected final ConcurrentHashMap<String, CompletableFuture<DlogBasedManagedLedger>> ledgers = new ConcurrentHashMap<>();
     private final DlogBasedEntryCacheManager entryCacheManager;
 
@@ -116,13 +115,6 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
         this.entryCacheManager = new DlogBasedEntryCacheManager(this);
         this.statsTask = executor.scheduleAtFixedRate(() -> refreshStats(), 0, StatsPeriodSeconds, TimeUnit.SECONDS);
         this.dlconfig = new DistributedLogConfiguration();
-        //todo check namespace str
-        String dlUri = "Distributedlog://" + zookeeper.toString() + "/" + "persistent://test-property/cl1/ns1/topic";
-        //todo check conf
-        this.dlNamespace = NamespaceBuilder.newBuilder()
-                .conf(dlconfig)
-                .uri(new URI(dlUri))
-                .build();
     }
 
     public DlogBasedManagedLedgerFactory(BookKeeper bookKeeper, ZooKeeper zooKeeper) throws Exception {
@@ -141,14 +133,7 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
         this.statsTask = executor.scheduleAtFixedRate(() -> refreshStats(), 0, StatsPeriodSeconds, TimeUnit.SECONDS);
 
         this.dlconfig = new DistributedLogConfiguration();
-        //todo check namespace str
-        String dlUri = "Distributedlog://" + zookeeper.toString() + "/" + "persistent://test-property/cl1/ns1/topic";
-        //todo check conf
-        this.dlNamespace = NamespaceBuilder.newBuilder()
-                .conf(dlconfig)
-                .uri(new URI(dlUri))
-                .build();
-    }
+       }
 
     private synchronized void refreshStats() {
         long now = System.nanoTime();
@@ -236,12 +221,39 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
                 log.warn("[{}] Got exception while trying to retrieve ledger", name, e);
             }
         }
+        //get corresponding dlog namespace to pulsar namespace
+         String parts[] = name.split("/");
+        String namespace = "";
+        for(int i = 0; i < parts.length - 1; i++)
+            namespace += parts[i];
+        //todo check namespace str
+//        String dlUri = "Distributedlog://" + zookeeper.toString() + "/" + "persistent://test-property/cl1/ns1";
+        final String uri = namespace;
+        //todo how to update dlog namespace's config, such as rolling time
+        dlNamespaces.computeIfAbsent(uri,(dlogNamespace) ->{
+            // Create the namespace ledger
+            dlconfig.setLogSegmentRollingIntervalMinutes((int) (config.getMaximumRolloverTimeMs() / 60000));
+            Namespace namespace1 = null;
+            try{
+                namespace1 = NamespaceBuilder.newBuilder()
+                        .conf(dlconfig)
+                        .uri(new URI(uri))
+                        .build();
+            }catch (Exception e){
+                // Clean the map if initialization fails
+                dlNamespaces.remove(uri, namespace1);
+                log.error("[{}] Got exception while trying to initialize namespace", uri, e);
 
+            }
+
+
+            return namespace1;
+        });
         // Ensure only one managed ledger is created and initialized
         ledgers.computeIfAbsent(name, (mlName) -> {
             // Create the managed ledger
             CompletableFuture<DlogBasedManagedLedger> future = new CompletableFuture<>();
-            final DlogBasedManagedLedger newledger = new DlogBasedManagedLedger(this, dlNamespace, store, config, executor,
+            final DlogBasedManagedLedger newledger = new DlogBasedManagedLedger(this, bookKeeper,dlNamespaces.get(uri), store, config, executor,
                     orderedExecutor, name);
             try{
                 newledger.initialize(new ManagedLedgerInitializeLedgerCallback() {
@@ -457,7 +469,7 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
         });
     }
 
-    public MetaStore getMetaStore() {
+    public DlogBasedMetaStore getMetaStore() {
         return store;
     }
 

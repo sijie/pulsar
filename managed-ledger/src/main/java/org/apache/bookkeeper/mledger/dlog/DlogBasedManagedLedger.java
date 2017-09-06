@@ -59,6 +59,7 @@ import org.apache.bookkeeper.mledger.util.Pair;
 import org.apache.bookkeeper.util.OrderedSafeExecutor;
 import org.apache.bookkeeper.util.UnboundArrayBlockingQueue;
 import org.apache.distributedlog.DistributedLogConfiguration;
+import org.apache.distributedlog.LogSegmentMetadata;
 import org.apache.distributedlog.api.AsyncLogReader;
 import org.apache.distributedlog.api.AsyncLogWriter;
 import org.apache.distributedlog.api.DistributedLogManager;
@@ -149,6 +150,8 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
     final static long WaitTimeAfterLedgerCreationFailureMs = 10000;
 
     volatile DlogBasedPosition lastConfirmedEntry;
+    // update slowest consuming position
+    private DlogBasedPosition slowestPosition = null;
 
     enum State {
         None, // Uninitialized
@@ -224,6 +227,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
 
         dlm = dlNamespace.openLog(name);
 
+        updateLedgers();
 
         // Fetch the list of existing ledgers in the managed ledger
         store.getManagedLedgerInfo(name, new MetaStoreCallback<ManagedLedgerInfo>() {
@@ -241,27 +245,10 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
                 }
 
                 //get log segments info from dlog and compare the last one
-                try{
-                    dlm.getLogSegments();
+                    updateLedgers();
 
-                }catch (IOException e){
-                    log.info("[{}] getLogSegments fail ", name, e);
-
-                }
-                //todo update ledgers when a new log segment create,but how to know?
-                // Last ledger stat may be zeroed, we must update it
-                if (ledgers.size() > 0) {
-                    final long id = ledgers.lastKey();
-
-                    LedgerInfo info = LedgerInfo.newBuilder().setLedgerId(id)
-                            .setEntries(lh.getLastAddConfirmed() + 1).setSize(lh.getLength())
-                            .setTimestamp(System.currentTimeMillis()).build();
-                    ledgers.put(id, info);
-
-
-                } else {
                     initializeLogWriter(callback);
-                }
+
             }
 
             @Override
@@ -271,6 +258,26 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
         });
     }
 
+    //when dlog metadata change, update local ledgers info,such as initialize, truncate
+    synchronized void updateLedgers(){
+        // Fetch the list of existing ledgers in the managed ledger
+        List<LogSegmentMetadata> logSegmentMetadatas = null;
+        try{
+            logSegmentMetadatas =  dlm.getLogSegments();
+
+        }catch (IOException e){
+            log.error("[{}] getLogSegments failed in getNumberOfEntries", name, e);
+
+        }
+        for(LogSegmentMetadata logSegment: logSegmentMetadatas){
+
+            LedgerInfo info = LedgerInfo.newBuilder().setLedgerId(logSegment.getLogSegmentId())
+                    .setEntries(logSegment.getRecordCount())
+                    .setTimestamp(logSegment.getCompletionTime()).build();
+            ledgers.put(logSegment.getLogSegmentId(), info);
+        }
+
+    }
     private synchronized void initializeLogWriter(final ManagedLedgerInitializeLedgerCallback callback) {
         if (log.isDebugEnabled()) {
             log.debug("[{}] initializing log writer; ledgers {}", name, ledgers);
@@ -336,13 +343,13 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
 
                 }
                 //todo only update this when a new log segment created? how can we know this ?
-                LedgerInfo info = LedgerInfo.newBuilder().setLedgerId(lh.getId()).setTimestamp(0).build();
-                ledgers.put(lh.getId(), info);
-
-                DlogBasedManagedLedger.this.asyncLogWriter = asyncLogWriter;
-
-                // Save it back to ensure all nodes exist
-                store.asyncUpdateLedgerIds(name, getManagedLedgerInfo(), ledgersStat, storeLedgersCb);
+//                LedgerInfo info = LedgerInfo.newBuilder().setLedgerId(lh.getId()).setTimestamp(0).build();
+//                ledgers.put(lh.getId(), info);
+//
+//                DlogBasedManagedLedger.this.asyncLogWriter = asyncLogWriter;
+//
+//                // Save it back to ensure all nodes exist
+//                store.asyncUpdateLedgerIds(name, getManagedLedgerInfo(), ledgersStat, storeLedgersCb);
             }
 
             @Override
@@ -1058,7 +1065,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
     @Override
     public void onFailure(Throwable throwable){
         log.error("[{}] Error creating writer {}", name, throwable);
-        ManagedLedgerException status = new ManagedLedgerException(BKException.getMessage(rc));
+        ManagedLedgerException status = new ManagedLedgerException(throwable);
 
         // Empty the list of pending requests and make all of them fail
         clearPendingAddEntries(status);
@@ -1080,64 +1087,65 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
         //check whether need to update metadata
         boolean update = false;
         try{
-            if(dlm.getLogSegments().size() == .size())
+            if(dlm.getLogSegments().size() != ledgers.size())
                 update = true;
         }catch (IOException e){
             log.error("[{}] getLogSegments fail when creating log writer ", name, e);
         }
         if(update){
-            final MetaStoreCallback<Void> cb = new MetaStoreCallback<Void>() {
-                @Override
-                public void operationComplete(Void v, Stat stat) {
-                    if (log.isDebugEnabled()) {
-                        log.debug("[{}] Updating of ledgers list after create complete. version={}", name, stat);
-                    }
-                    ledgersStat = stat;
-                    ledgersListMutex.unlock();
-                    updateLedgersIdsComplete(stat);
-                    synchronized (DlogBasedManagedLedger.this) {
-                        mbean.addLedgerSwitchLatencySample(System.nanoTime() - lastLedgerCreationInitiationTimestamp,
-                                TimeUnit.NANOSECONDS);
-                    }
-                }
+            //fetch log segments
+//            final MetaStoreCallback<Void> cb = new MetaStoreCallback<Void>() {
+//                @Override
+//                public void operationComplete(Void v, Stat stat) {
+//                    if (log.isDebugEnabled()) {
+//                        log.debug("[{}] Updating of ledgers list after create complete. version={}", name, stat);
+//                    }
+//                    ledgersStat = stat;
+//                    ledgersListMutex.unlock();
+//                    updateLedgersIdsComplete(stat);
+//                    synchronized (DlogBasedManagedLedger.this) {
+//                        mbean.addLedgerSwitchLatencySample(System.nanoTime() - lastLedgerCreationInitiationTimestamp,
+//                                TimeUnit.NANOSECONDS);
+//                    }
+//                }
+//
+//                @Override
+//                public void operationFailed(MetaStoreException e) {
+//                    if (e instanceof BadVersionException) {
+//                        synchronized (DlogBasedManagedLedger.this) {
+//                            log.error(
+//                                    "[{}] Failed to udpate ledger list. z-node version mismatch. Closing managed ledger",
+//                                    name);
+//                            STATE_UPDATER.set(DlogBasedManagedLedger.this, State.Fenced);
+//                            clearPendingAddEntries(e);
+//                            return;
+//                        }
+//                    }
+//
+//                    log.warn("[{}] Error updating meta data with the new list of ledgers: {}", name, e.getMessage());
+//
+//                    // Remove the ledger, since we failed to update the list
+//                    ledgers.remove(lh.getId());
+//                    mbean.startDataLedgerDeleteOp();
+//                    bookKeeper.asyncDeleteLedger(lh.getId(), (rc1, ctx1) -> {
+//                        mbean.endDataLedgerDeleteOp();
+//                        if (rc1 != BKException.Code.OK) {
+//                            log.warn("[{}] Failed to delete ledger {}: {}", name, lh.getId(),
+//                                    BKException.getMessage(rc1));
+//                        }
+//                    }, null);
+//
+//                    ledgersListMutex.unlock();
+//
+//                    synchronized (DlogBasedManagedLedger.this) {
+//                        lastLedgerCreationFailureTimestamp = System.currentTimeMillis();
+//                        STATE_UPDATER.set(DlogBasedManagedLedger.this, State.WriterClosed);
+//                        clearPendingAddEntries(e);
+//                    }
+//                }
+//            };
 
-                @Override
-                public void operationFailed(MetaStoreException e) {
-                    if (e instanceof BadVersionException) {
-                        synchronized (ManagedLedgerImpl.this) {
-                            log.error(
-                                    "[{}] Failed to udpate ledger list. z-node version mismatch. Closing managed ledger",
-                                    name);
-                            STATE_UPDATER.set(ManagedLedgerImpl.this, State.Fenced);
-                            clearPendingAddEntries(e);
-                            return;
-                        }
-                    }
-
-                    log.warn("[{}] Error updating meta data with the new list of ledgers: {}", name, e.getMessage());
-
-                    // Remove the ledger, since we failed to update the list
-                    ledgers.remove(lh.getId());
-                    mbean.startDataLedgerDeleteOp();
-                    bookKeeper.asyncDeleteLedger(lh.getId(), (rc1, ctx1) -> {
-                        mbean.endDataLedgerDeleteOp();
-                        if (rc1 != BKException.Code.OK) {
-                            log.warn("[{}] Failed to delete ledger {}: {}", name, lh.getId(),
-                                    BKException.getMessage(rc1));
-                        }
-                    }, null);
-
-                    ledgersListMutex.unlock();
-
-                    synchronized (ManagedLedgerImpl.this) {
-                        lastLedgerCreationFailureTimestamp = System.currentTimeMillis();
-                        STATE_UPDATER.set(ManagedLedgerImpl.this, State.ClosedLedger);
-                        clearPendingAddEntries(e);
-                    }
-                }
-            };
-
-            updateLedgersListAfterRollover(cb);
+//            updateLedgersListAfterRollover(cb);
         }
 
 
@@ -1299,14 +1307,6 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
         return mbean;
     }
 
-    boolean hasMoreEntries(DlogBasedPosition position) {
-        DlogBasedPosition lastPos = lastConfirmedEntry;
-        boolean result = position.compareTo(lastPos) <= 0;
-        if (log.isDebugEnabled()) {
-            log.debug("[{}] hasMoreEntries: pos={} lastPos={} res={}", name, position, lastPos, result);
-        }
-        return result;
-    }
 
     void discardEntriesFromCache(DlogBasedManagedCursor cursor, DlogBasedPosition newPosition) {
         Pair<DlogBasedPosition, DlogBasedPosition> pair = activeCursors.cursorUpdated(cursor, newPosition);
@@ -1342,7 +1342,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
         if (ledgerId != position.getLedgerId()) {
             // The ledger pointed by this position does not exist anymore. It was deleted because it was empty. We need
             // to skip on the next available ledger
-            position = new DlogBasedPosition(ledgerId, 0);
+            position = new DlogBasedPosition(ledgerId, 0, 0);
         }
 
         return position;
@@ -1375,7 +1375,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
     }
 
     /**
-     * Checks whether there are ledger that have been fully consumed and deletes them
+     * Checks whether should truncate the log to slowestPosition and truncate.
      *
      * @throws Exception
      */
@@ -1386,11 +1386,11 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
             return;
         }
 
-        List<LedgerInfo> ledgersToDelete = Lists.newArrayList();
+        DlogBasedPosition previousSlowestPosition = slowestPosition;
 
         synchronized (this) {
             if (log.isDebugEnabled()) {
-                log.debug("[{}] Start TrimConsumedLedgers. ledgers={} totalSize={}", name, ledgers.keySet(),
+                log.debug("[{}] Start truncate log stream. slowest={} totalSize={}", name, slowestPosition,
                         TOTAL_SIZE_UPDATER.get(this));
             }
             if (STATE_UPDATER.get(this) == State.Closed) {
@@ -1398,112 +1398,46 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
                 trimmerMutex.unlock();
                 return;
             }
-            long slowestReaderLedgerId = -1;
-            if (cursors.isEmpty()) {
-                // At this point the lastLedger will be pointing to the
-                // ledger that has just been closed, therefore the +1 to
-                // include lastLedger in the trimming.
-                slowestReaderLedgerId = currentLedger.getId() + 1;
-            } else {
+            if (!cursors.isEmpty()) {
                 DlogBasedPosition slowestReaderPosition = cursors.getSlowestReaderPosition();
                 if (slowestReaderPosition != null) {
-                    slowestReaderLedgerId = slowestReaderPosition.getLedgerId();
+                    slowestPosition = slowestReaderPosition;
                 } else {
                     trimmerMutex.unlock();
                     return;
                 }
             }
 
-            if (log.isDebugEnabled()) {
-                log.debug("[{}] Slowest consumer ledger id: {}", name, slowestReaderLedgerId);
-            }
-
-            // skip ledger if retention constraint met
-            for (LedgerInfo ls : ledgers.headMap(slowestReaderLedgerId, false).values()) {
-                boolean expired = hasLedgerRetentionExpired(ls.getTimestamp());
-                boolean overRetentionQuota = TOTAL_SIZE_UPDATER.get(this) > ((long) config.getRetentionSizeInMB()) * 1024 * 1024;
-
-                if (log.isDebugEnabled()) {
-                    log.debug(
-                            "[{}] Checking ledger {} -- time-old: {} sec -- expired: {} -- over-quota: {} -- current-ledger: {}",
-                            name, ls.getLedgerId(), (System.currentTimeMillis() - ls.getTimestamp()) / 1000.0, expired,
-                            overRetentionQuota, currentLedger.getId());
-                }
-                if (ls.getLedgerId() == currentLedger.getId() || (!expired && !overRetentionQuota)) {
-                    if (log.isDebugEnabled()) {
-                        if (!expired) {
-                            log.debug("[{}] ledger id skipped for deletion as unexpired: {}", name, ls.getLedgerId());
-                        }
-                        if (!overRetentionQuota) {
-                            log.debug("[{}] ledger id: {} skipped for deletion as size: {} under quota: {} MB", name,
-                                    ls.getLedgerId(), TOTAL_SIZE_UPDATER.get(this), config.getRetentionSizeInMB());
-                        }
-                    }
-                    break;
-                }
-
-                ledgersToDelete.add(ls);
-                ledgerCache.remove(ls.getLedgerId());
-            }
-
-            if (ledgersToDelete.isEmpty()) {
-                trimmerMutex.unlock();
-                return;
-            }
-
-            if (STATE_UPDATER.get(this) == State.CreatingLedger // Give up now and schedule a new trimming
-                    || !ledgersListMutex.tryLock()) { // Avoid deadlocks with other operations updating the ledgers list
-                scheduleDeferredTrimming();
-                trimmerMutex.unlock();
-                return;
-            }
-
             // Update metadata
-            for (LedgerInfo ls : ledgersToDelete) {
-                ledgers.remove(ls.getLedgerId());
-                NUMBER_OF_ENTRIES_UPDATER.addAndGet(this, -ls.getEntries());
-                TOTAL_SIZE_UPDATER.addAndGet(this, -ls.getSize());
+//todo how to calculate removed size and entries
+//            long removeEntries = slowestPosition.getDlsn() - previousSlowestPosition.getDlsn();
+//            NUMBER_OF_ENTRIES_UPDATER.addAndGet(this, -ls.getEntries());
+//            TOTAL_SIZE_UPDATER.addAndGet(this, -ls.getSize());
 
-                entryCache.invalidateAllEntries(ls.getLedgerId());
-            }
+            entryCache.invalidateAllEntries(slowestPosition.getLedgerId());
 
-            if (log.isDebugEnabled()) {
-                log.debug("[{}] Updating of ledgers list after trimming", name);
-            }
+            ledgersListMutex.unlock();
+            trimmerMutex.unlock();
 
-            store.asyncUpdateLedgerIds(name, getManagedLedgerInfo(), ledgersStat, new MetaStoreCallback<Void>() {
-                @Override
-                public void operationComplete(Void result, Stat stat) {
-                    log.info("[{}] End TrimConsumedLedgers. ledgers={} totalSize={}", name, ledgers.size(),
-                            TOTAL_SIZE_UPDATER.get(DlogBasedManagedLedger.this));
-                    ledgersStat = stat;
-                    ledgersListMutex.unlock();
-                    trimmerMutex.unlock();
-
-                    for (LedgerInfo ls : ledgersToDelete) {
-                        log.info("[{}] Removing ledger {} - size: {}", name, ls.getLedgerId(), ls.getSize());
-                        bookKeeper.asyncDeleteLedger(ls.getLedgerId(), (rc, ctx) -> {
-                            if (rc == BKException.Code.NoSuchLedgerExistsException) {
-                                log.warn("[{}] Ledger was already deleted {}", name, ls.getLedgerId());
-                            } else if (rc != BKException.Code.OK) {
-                                log.error("[{}] Error deleting ledger {}", name, ls.getLedgerId(),
-                                        BKException.getMessage(rc));
-                            } else {
-                                if (log.isDebugEnabled()) {
-                                    log.debug("[{}] Deleted ledger {}", name, ls.getLedgerId());
-                                }
-                            }
-                        }, null);
-                    }
-                }
-
-                @Override
-                public void operationFailed(MetaStoreException e) {
-                    log.warn("[{}] Failed to update the list of ledgers after trimming", name, e);
-                    ledgersListMutex.unlock();
-                    trimmerMutex.unlock();
-                }
-            });
+            //todo use which metadata? just one slowestPosition?
+//            store.asyncUpdateLedgerIds(name, getManagedLedgerInfo(), ledgersStat, new MetaStoreCallback<Void>() {
+//                @Override
+//                public void operationComplete(Void result, Stat stat) {
+//                    log.info("[{}] End TrimConsumedLedgers. ledgers={} totalSize={}", name, ledgers.size(),
+//                            TOTAL_SIZE_UPDATER.get(DlogBasedManagedLedger.this));
+//                    ledgersStat = stat;
+//                    ledgersListMutex.unlock();
+//                    trimmerMutex.unlock();
+//
+//                }
+//
+//                @Override
+//                public void operationFailed(MetaStoreException e) {
+//                    log.warn("[{}] Failed to update the list of ledgers after trimming", name, e);
+//                    ledgersListMutex.unlock();
+//                    trimmerMutex.unlock();
+//                }
+//            });
         }
     }
 
@@ -1586,43 +1520,18 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
     }
 
     private void deleteAllLedgers(DeleteLedgerCallback callback, Object ctx) {
-        List<LedgerInfo> ledgers = Lists.newArrayList(DlogBasedManagedLedger.this.ledgers.values());
-        AtomicInteger ledgersToDelete = new AtomicInteger(ledgers.size());
-        if (ledgers.isEmpty()) {
-            // No ledgers to delete, proceed with deleting metadata
-            deleteMetadata(callback, ctx);
-            return;
+        if (log.isDebugEnabled()) {
+            log.debug("[{}] Deleting dlog stream {}", name, dlm.getStreamName());
         }
+        try{
+            dlm.delete();
 
-        for (LedgerInfo ls : ledgers) {
-            if (log.isDebugEnabled()) {
-                log.debug("[{}] Deleting ledger {}", name, ls);
-            }
-            bookKeeper.asyncDeleteLedger(ls.getLedgerId(), (rc, ctx1) -> {
-                switch (rc) {
-                    case BKException.Code.NoSuchLedgerExistsException:
-                        log.warn("[{}] Ledger {} not found when deleting it", name, ls.getLedgerId());
-                        // Continue anyway
-
-                    case BKException.Code.OK:
-                        if (ledgersToDelete.decrementAndGet() == 0) {
-                            // All ledgers deleted, now remove ML metadata
-                            deleteMetadata(callback, ctx);
-                        }
-                        break;
-
-                    default:
-                        // Handle error
-                        log.warn("[{}] Failed to delete ledger {} -- {}", name, ls.getLedgerId(),
-                                BKException.getMessage(rc));
-                        int toDelete = ledgersToDelete.get();
-                        if (toDelete != -1 && ledgersToDelete.compareAndSet(toDelete, -1)) {
-                            // Trigger callback only once
-                            callback.deleteLedgerFailed(new ManagedLedgerException(BKException.getMessage(rc)), ctx);
-                        }
-                }
-            }, null);
+        }catch (IOException e){
+            callback.deleteLedgerFailed(new ManagedLedgerException(e), ctx);
+            log.error("[{}] Deleting dlog stream :{} fail", name, dlm.getStreamName(), e);
         }
+        deleteMetadata(callback, ctx);
+
     }
 
     private void deleteMetadata(DeleteLedgerCallback callback, Object ctx) {
@@ -1630,14 +1539,14 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
             @Override
             public void operationComplete(Void result, Stat stat) {
                 log.info("[{}] Successfully deleted managed ledger", name);
-                factory.close(DlogBasedPosition.this);
+                factory.close(DlogBasedManagedLedger.this);
                 callback.deleteLedgerComplete(ctx);
             }
 
             @Override
             public void operationFailed(MetaStoreException e) {
                 log.warn("[{}] Failed to delete managed ledger", name, e);
-                factory.close(DlogBasedPosition.this);
+                factory.close(DlogBasedManagedLedger.this);
                 callback.deleteLedgerFailed(e, ctx);
             }
         });
@@ -1682,6 +1591,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
                 count += ls.getEntries();
             }
 
+
             return count;
         }
     }
@@ -1718,7 +1628,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
         while (entriesToSkip >= 0) {
             // for the current ledger, the number of entries written is deduced from the lastConfirmedEntry
             // for previous ledgers, LedgerInfo in ZK has the number of entries
-            if (currentLedgerId == currentLedger.getId()) {
+            if (currentLedgerId == currentLedger) {
                 lastLedger = true;
                 totalEntriesInCurrentLedger = lastConfirmedEntry.getEntryId() + 1;
             } else {
@@ -1835,7 +1745,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
     }
 
     DlogBasedPosition getNextValidPosition(final DlogBasedPosition position) {
-        DlogBasedPosition nextPosition = position.getNext();
+        DlogBasedPosition nextPosition = (DlogBasedPosition) position.getNext();
         while (!isValidPosition(nextPosition)) {
             Long nextLedgerId = ledgers.ceilingKey(nextPosition.getLedgerId() + 1);
             if (nextLedgerId == null) {
@@ -1846,9 +1756,10 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
         return nextPosition;
     }
 
+    //todo whether -1 is ok?
     DlogBasedPosition getFirstPosition() {
         Long ledgerId = ledgers.firstKey();
-        return ledgerId == null ? null : new DlogBasedPosition(ledgerId, -1);
+        return ledgerId == null ? null : new DlogBasedPosition(ledgerId, -1, -1);
     }
 
     DlogBasedPosition getLastPosition() {
@@ -1907,30 +1818,6 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
         return cursor.isDurable() && activeCursors.get(cursor.getName()) != null;
     }
 
-    private boolean currentLedgerIsFull() {
-        boolean spaceQuotaReached = (currentLedgerEntries >= config.getMaxEntriesPerLedger()
-                || currentLedgerSize >= (config.getMaxSizePerLedgerMb() * MegaByte));
-
-        long timeSinceLedgerCreationMs = System.currentTimeMillis() - lastLedgerCreatedTimestamp;
-        boolean maxLedgerTimeReached = timeSinceLedgerCreationMs >= maximumRolloverTimeMs;
-
-        if (spaceQuotaReached || maxLedgerTimeReached) {
-            if (config.getMinimumRolloverTimeMs() > 0) {
-
-                boolean switchLedger = timeSinceLedgerCreationMs > config.getMinimumRolloverTimeMs();
-                if (log.isDebugEnabled()) {
-                    log.debug("Diff: {}, threshold: {} -- switch: {}",
-                            System.currentTimeMillis() - lastLedgerCreatedTimestamp, config.getMinimumRolloverTimeMs(),
-                            switchLedger);
-                }
-                return switchLedger;
-            } else {
-                return true;
-            }
-        } else {
-            return false;
-        }
-    }
 
     public List<LedgerInfo> getLedgersInfoAsList() {
         return Lists.newArrayList(ledgers.values());
