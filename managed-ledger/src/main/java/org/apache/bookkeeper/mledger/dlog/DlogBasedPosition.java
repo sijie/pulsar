@@ -1,6 +1,7 @@
 package org.apache.bookkeeper.mledger.dlog;
 
 import org.apache.bookkeeper.mledger.Position;
+import org.apache.bookkeeper.mledger.proto.MLDataFormats;
 import org.apache.distributedlog.DLSN;
 
 /**
@@ -14,6 +15,13 @@ public class DlogBasedPosition implements Position, Comparable<DlogBasedPosition
     public DlogBasedPosition(long logSegmentSequenceNo, long entryId, long slotId){
         dlsn = new DLSN(logSegmentSequenceNo, entryId, slotId);
     }
+    public static Position earliest = new DlogBasedPosition(-1, -1, -1);
+    public static Position latest = new DlogBasedPosition(Long.MAX_VALUE, Long.MAX_VALUE, 0);
+
+    // construct from metadata in zk
+    public DlogBasedPosition(MLDataFormats.NestedPositionInfo npi) {
+        this.dlsn = new DLSN(npi.getLedgerId(),npi.getEntryId(),0);
+    }
     public DlogBasedPosition(DLSN dlsn){
         this.dlsn = dlsn;
     }
@@ -22,6 +30,9 @@ public class DlogBasedPosition implements Position, Comparable<DlogBasedPosition
     }
     public static DlogBasedPosition get(long logSegmentSequenceNo, long entryId, long slotId) {
         return new DlogBasedPosition(logSegmentSequenceNo, entryId, slotId);
+    }
+    public static DlogBasedPosition get(long logSegmentSequenceNo, long entryId) {
+        return new DlogBasedPosition(logSegmentSequenceNo, entryId, 0);
     }
     public static DlogBasedPosition get(DLSN dlsn) {
         return new DlogBasedPosition(dlsn);
