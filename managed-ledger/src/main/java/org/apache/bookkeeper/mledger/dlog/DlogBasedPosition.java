@@ -22,6 +22,10 @@ public class DlogBasedPosition implements Position, Comparable<DlogBasedPosition
     public DlogBasedPosition(MLDataFormats.NestedPositionInfo npi) {
         this.dlsn = new DLSN(npi.getLedgerId(),npi.getEntryId(),0);
     }
+    // construct from metadata in zk
+    public DlogBasedPosition(MLDataFormats.PositionInfo pi) {
+        this.dlsn = new DLSN(pi.getLedgerId(),pi.getEntryId(),0);
+    }
     public DlogBasedPosition(DLSN dlsn){
         this.dlsn = dlsn;
     }
@@ -44,7 +48,7 @@ public class DlogBasedPosition implements Position, Comparable<DlogBasedPosition
 
     public DLSN getDlsn(){return dlsn;}
     @Override
-    public Position getNext() {
+    public DlogBasedPosition getNext() {
 
         return new DlogBasedPosition(dlsn.getNextDLSN());
     }

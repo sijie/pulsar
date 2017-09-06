@@ -198,7 +198,7 @@ public class DlogBasedManagedCursor implements ManagedCursor {
                     // There is no cursor ledger to read the last position from. It means the cursor has been properly
                     // closed and the last mark-delete position is stored in the ManagedCursorInfo itself.s
                     DlogBasedPosition recoveredPosition = new DlogBasedPosition(info.getMarkDeleteLedgerId(),
-                            info.getMarkDeleteEntryId());
+                            info.getMarkDeleteEntryId(),0);
                     if (info.getIndividualDeletedMessagesCount() > 0) {
                         recoverIndividualDeletedMessages(info.getIndividualDeletedMessagesList());
                     }
@@ -692,7 +692,7 @@ public class DlogBasedManagedCursor implements ManagedCursor {
     @Override
     public Position getFirstPosition() {
         Long firstLedgerId = ledger.getLedgersInfo().firstKey();
-        return firstLedgerId == null ? null : new DlogBasedPosition(firstLedgerId, 0);
+        return firstLedgerId == null ? null : new DlogBasedPosition(firstLedgerId, 0, 0);
     }
 
     protected void internalResetCursor(final DlogBasedPosition newPosition,
@@ -2105,7 +2105,7 @@ public class DlogBasedManagedCursor implements ManagedCursor {
      */
     private DlogBasedPosition getRollbackPosition(ManagedCursorInfo info) {
         DlogBasedPosition firstPosition = ledger.getFirstPosition();
-        DlogBasedPosition snapshottedPosition = new DlogBasedPosition(info.getMarkDeleteLedgerId(), info.getMarkDeleteEntryId());
+        DlogBasedPosition snapshottedPosition = new DlogBasedPosition(info.getMarkDeleteLedgerId(), info.getMarkDeleteEntryId(), 0);
         if (firstPosition == null) {
             // There are no ledgers in the ML, any position is good
             return snapshottedPosition;
