@@ -60,14 +60,12 @@ public interface DlogBasedMetaStore {
      * @param ledgerName
      *            the name of the ManagedLedger
      *
-     * @param ManagedLedgerInfo
+     * @param mlInfo
      *            the metadata object to be persisted
      * @param version
      *            version object associated with current state
      * @param callback
      *            callback object
-     * @param ctx
-     *            opaque context object
      */
     void asyncUpdateLedgerIds(String ledgerName, ManagedLedgerInfo mlInfo, Stat version,
                               MetaStoreCallback<Void> callback);
@@ -99,7 +97,7 @@ public interface DlogBasedMetaStore {
      * @param ledgerName
      *            the name of the ManagedLedger
      * @param cursorName
-     * @param ledgerId
+     * @param info
      * @param callback
      *            the callback
      * @throws MetaStoreException

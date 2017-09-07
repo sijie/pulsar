@@ -25,10 +25,14 @@ message DlogBasedMessageRange {
 }
 
 message DlogBasedManagedCursorInfo {
-	//todo use dlog's logsegment id?
-	required int64 cursorsLedgerId = 1;
+	// If the ledger id is -1, then the mark-delete position is
+    	// the one from the (ledgerId, entryId) snapshot below
+    	required int64 cursorsLedgerId = 1;
 
-	// Last snapshot of the mark-delete position
-	optional DLSN markDeletePosition = 2;
+    	// Last snapshot of the mark-delete position
+    	optional int64 markDeleteLedgerId = 2;
+    	optional int64 markDeleteEntryId  = 3;
+
+
 	repeated DlogBasedMessageRange individualDeletedMessages = 3;
 }
