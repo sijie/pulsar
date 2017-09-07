@@ -173,7 +173,6 @@ public class DlogBasedEntryCacheImpl implements DlogBasedEntryCache {
         manager.entriesRemoved(sizeRemoved);
     }
 
-    //todo we should create a logReader open from a specific location
     @Override
     public void asyncReadEntry(AsyncLogReader logReader, DlogBasedPosition position, final ReadEntryCallback callback,
                                final Object ctx) {
@@ -199,13 +198,15 @@ public class DlogBasedEntryCacheImpl implements DlogBasedEntryCache {
                     ml.getExecutor().submitOrdered(ml.getName(), safeRun(() -> {
                         callback.readEntryComplete(returnEntry, ctx);
                     }));
+
+                    logReader.asyncClose();
                 }
 
                 @Override
                 public void onFailure(Throwable throwable) {
 
                     callback.readEntryFailed(new ManagedLedgerException(throwable), ctx);
-                    return;
+                    logReader.asyncClose();
                 }
             });
 
@@ -223,7 +224,6 @@ public class DlogBasedEntryCacheImpl implements DlogBasedEntryCache {
         if (log.isDebugEnabled()) {
             log.debug("[{}] Reading entries range log stream {}: {} to {}", ml.getName(), logReader.getStreamName(), firstEntry, lastEntry);
         }
-
         Collection<DlogBasedEntry> cachedEntries = entries.getRange(firstPosition, lastPosition);
 
         if (cachedEntries.size() == entriesToRead) {
@@ -282,11 +282,13 @@ public class DlogBasedEntryCacheImpl implements DlogBasedEntryCache {
 
                         callback.readEntriesComplete((List) entriesToReturn, ctx);
                     }));
+                    logReader.asyncClose();
                 }
 
                 @Override
                 public void onFailure(Throwable throwable) {
                     callback.readEntriesFailed(new ManagedLedgerException(throwable), ctx);
+                    logReader.asyncClose();
                 }
             });
         }
