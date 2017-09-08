@@ -24,7 +24,7 @@ import com.google.protobuf.TextFormat;
 import com.google.protobuf.TextFormat.ParseException;
 import org.apache.bookkeeper.mledger.ManagedLedgerException.BadVersionException;
 import org.apache.bookkeeper.mledger.ManagedLedgerException.MetaStoreException;
-import org.apache.bookkeeper.mledger.dlog.DlogBasedMetaStore;
+import org.apache.bookkeeper.mledger.impl.MetaStore;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats.ManagedCursorInfo;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats.ManagedLedgerInfo;
 import org.apache.bookkeeper.util.OrderedSafeExecutor;
@@ -45,7 +45,8 @@ import java.util.List;
 
 import static org.apache.bookkeeper.mledger.util.SafeRun.safeRun;
 
-public class DlogBasedMetaStoreImplZookeeper implements DlogBasedMetaStore {
+//todo if change the ml metadat in zk, we should change it, it's not necessary now.
+public class DlogBasedMetaStoreImplZookeeper implements MetaStore {
 
     private static final Charset Encoding = Charsets.UTF_8;
     private static final List<ACL> Acl = ZooDefs.Ids.OPEN_ACL_UNSAFE;

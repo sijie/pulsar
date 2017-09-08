@@ -1,55 +1,18 @@
 package org.apache.bookkeeper.mledger.dlog;
-import static com.google.common.base.Preconditions.checkArgument;
-import static java.lang.Math.min;
-import static org.apache.bookkeeper.mledger.util.SafeRun.safeRun;
-
-import java.io.IOException;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.NavigableMap;
-import java.util.Queue;
-import java.util.Random;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLongFieldUpdater;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
-
-import org.apache.bookkeeper.client.AsyncCallback.CreateCallback;
-import org.apache.bookkeeper.client.AsyncCallback.OpenCallback;
-import org.apache.bookkeeper.client.BKException;
+import com.google.common.collect.*;
+import com.google.common.util.concurrent.RateLimiter;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import org.apache.bookkeeper.client.BookKeeper;
-import org.apache.bookkeeper.client.LedgerHandle;
-import org.apache.bookkeeper.mledger.AsyncCallbacks.AddEntryCallback;
-import org.apache.bookkeeper.mledger.AsyncCallbacks.CloseCallback;
-import org.apache.bookkeeper.mledger.AsyncCallbacks.DeleteCursorCallback;
-import org.apache.bookkeeper.mledger.AsyncCallbacks.DeleteLedgerCallback;
-import org.apache.bookkeeper.mledger.AsyncCallbacks.OpenCursorCallback;
-import org.apache.bookkeeper.mledger.AsyncCallbacks.ReadEntryCallback;
-import org.apache.bookkeeper.mledger.AsyncCallbacks.TerminateCallback;
-import org.apache.bookkeeper.mledger.Entry;
-import org.apache.bookkeeper.mledger.ManagedCursor;
-import org.apache.bookkeeper.mledger.ManagedLedger;
-import org.apache.bookkeeper.mledger.ManagedLedgerConfig;
-import org.apache.bookkeeper.mledger.ManagedLedgerException;
-import org.apache.bookkeeper.mledger.ManagedLedgerException.BadVersionException;
+import org.apache.bookkeeper.mledger.AsyncCallbacks.*;
+import org.apache.bookkeeper.mledger.*;
 import org.apache.bookkeeper.mledger.ManagedLedgerException.ManagedLedgerFencedException;
 import org.apache.bookkeeper.mledger.ManagedLedgerException.ManagedLedgerTerminatedException;
 import org.apache.bookkeeper.mledger.ManagedLedgerException.MetaStoreException;
-import org.apache.bookkeeper.mledger.ManagedLedgerMXBean;
-import org.apache.bookkeeper.mledger.Position;
 import org.apache.bookkeeper.mledger.dlog.DlogBasedManagedCursor.VoidCallback;
-import org.apache.bookkeeper.mledger.dlog.DlogBasedManagedLedgerMBean;
-import org.apache.bookkeeper.mledger.dlog.DlogBasedMetaStore;
-import org.apache.bookkeeper.mledger.dlog.DlogBasedMetaStore.MetaStoreCallback;
-import org.apache.bookkeeper.mledger.dlog.DlogBasedMetaStore.Stat;
-import org.apache.bookkeeper.mledger.impl.NonDurableCursorImpl;
+import org.apache.bookkeeper.mledger.impl.MetaStore;
+import org.apache.bookkeeper.mledger.impl.MetaStore.MetaStoreCallback;
+import org.apache.bookkeeper.mledger.impl.MetaStore.Stat;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats.ManagedLedgerInfo;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats.ManagedLedgerInfo.LedgerInfo;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats.NestedPositionInfo;
@@ -58,7 +21,6 @@ import org.apache.bookkeeper.mledger.util.Futures;
 import org.apache.bookkeeper.mledger.util.Pair;
 import org.apache.bookkeeper.util.OrderedSafeExecutor;
 import org.apache.bookkeeper.util.UnboundArrayBlockingQueue;
-import org.apache.distributedlog.DistributedLogConfiguration;
 import org.apache.distributedlog.LogSegmentMetadata;
 import org.apache.distributedlog.api.AsyncLogReader;
 import org.apache.distributedlog.api.AsyncLogWriter;
@@ -67,19 +29,20 @@ import org.apache.distributedlog.api.namespace.Namespace;
 import org.apache.distributedlog.common.concurrent.FutureEventListener;
 import org.apache.pulsar.common.api.Commands;
 import org.apache.pulsar.common.api.proto.PulsarApi.MessageMetadata;
-import org.apache.pulsar.common.util.collections.ConcurrentLongHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.collect.BoundType;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import com.google.common.collect.Queues;
-import com.google.common.collect.Range;
-import com.google.common.util.concurrent.RateLimiter;
+import java.io.IOException;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLongFieldUpdater;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
+import static com.google.common.base.Preconditions.checkArgument;
+import static java.lang.Math.min;
+import static org.apache.bookkeeper.mledger.util.SafeRun.safeRun;
 
 public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener<AsyncLogWriter> {
     private final static long MegaByte = 1024 * 1024;
@@ -92,7 +55,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
     private final BookKeeper bookKeeper;
 
     private final ManagedLedgerConfig config;
-    private final DlogBasedMetaStore store;
+    private final MetaStore store;
 
     // ledger here is dlog log segment
     private final NavigableMap<Long, LedgerInfo> ledgers = new ConcurrentSkipListMap<>();
@@ -192,7 +155,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
     private DistributedLogManager dlm;
     private final Namespace dlNamespace;
 
-    public DlogBasedManagedLedger(DlogBasedManagedLedgerFactory factory, BookKeeper bookKeeper, Namespace namespace, DlogBasedMetaStore store,
+    public DlogBasedManagedLedger(DlogBasedManagedLedgerFactory factory, BookKeeper bookKeeper, Namespace namespace, MetaStore store,
     ManagedLedgerConfig config, ScheduledExecutorService scheduledExecutor, OrderedSafeExecutor orderedExecutor,
     final String name) {
         this.factory = factory;
@@ -627,7 +590,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
             return;
         }
 
-        // First remove the consumer form the DlogBasedMetaStore. If this operation succeeds and the next one (removing the
+        // First remove the consumer form the MetaStore. If this operation succeeds and the next one (removing the
         // ledger from BK) don't, we end up having a loose ledger leaked but the state will be consistent.
         store.asyncRemoveCursor(DlogBasedManagedLedger.this.name, consumerName, new MetaStoreCallback<Void>() {
             @Override
@@ -1867,7 +1830,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
         STATE_UPDATER.set(this, State.Fenced);
     }
 
-    DlogBasedMetaStore getStore() {
+    MetaStore getStore() {
         return store;
     }
 

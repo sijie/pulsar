@@ -39,9 +39,9 @@ import org.apache.bookkeeper.mledger.ManagedLedgerInfo.MessageRangeInfo;
 import org.apache.bookkeeper.mledger.ManagedLedgerInfo.PositionInfo;
 import org.apache.bookkeeper.mledger.dlog.DlogBasedManagedLedger.ManagedLedgerInitializeLedgerCallback;
 import org.apache.bookkeeper.mledger.dlog.DlogBasedManagedLedger.State;
-import org.apache.bookkeeper.mledger.dlog.DlogBasedMetaStore;
-import org.apache.bookkeeper.mledger.dlog.DlogBasedMetaStore.MetaStoreCallback;
-import org.apache.bookkeeper.mledger.dlog.DlogBasedMetaStore.Stat;
+import org.apache.bookkeeper.mledger.impl.MetaStore;
+import org.apache.bookkeeper.mledger.impl.MetaStore.MetaStoreCallback;
+import org.apache.bookkeeper.mledger.impl.MetaStore.Stat;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats.ManagedCursorInfo;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats.MessageRange;
@@ -65,7 +65,7 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
 
     protected final ConcurrentHashMap<String, Namespace> dlNamespaces = new ConcurrentHashMap<>();
     private final DistributedLogConfiguration dlconfig;
-    private final DlogBasedMetaStore store;
+    private final MetaStore store;
     private final BookKeeper bookKeeper;
     private final boolean isBookkeeperManaged;
     private final ZooKeeper zookeeper;
@@ -469,7 +469,7 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
         });
     }
 
-    public DlogBasedMetaStore getMetaStore() {
+    public MetaStore getMetaStore() {
         return store;
     }
 
