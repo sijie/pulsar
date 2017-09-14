@@ -32,6 +32,8 @@ import org.apache.bookkeeper.mledger.util.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Map;
+
 public class DlogBasedNonDurableCursor extends DlogBasedManagedCursor {
 
     DlogBasedNonDurableCursor(BookKeeper bookkeeper, ManagedLedgerConfig config, DlogBasedManagedLedger ledger, String cursorName,
@@ -79,8 +81,8 @@ public class DlogBasedNonDurableCursor extends DlogBasedManagedCursor {
     }
 
     @Override
-    protected void internalAsyncMarkDelete(final DlogBasedPosition newPosition, final MarkDeleteCallback callback,
-            final Object ctx) {
+    protected void internalAsyncMarkDelete(final DlogBasedPosition newPosition, Map<String, Long> properties,
+                                           final MarkDeleteCallback callback, final Object ctx) {
         // Bypass persistence of mark-delete position and individually deleted messages info
         callback.markDeleteComplete(ctx);
     }

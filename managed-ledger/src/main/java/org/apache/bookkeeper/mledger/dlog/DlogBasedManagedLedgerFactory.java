@@ -65,6 +65,8 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
 
     protected final ConcurrentHashMap<String, Namespace> dlNamespaces = new ConcurrentHashMap<>();
     private final DistributedLogConfiguration dlconfig;
+    private String ZKS = "";
+    private final String defaultNS = "default_namespace";
     private final MetaStore store;
     private final BookKeeper bookKeeper;
     private final boolean isBookkeeperManaged;
@@ -82,6 +84,7 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
     private final ScheduledFuture<?> statsTask;
     private static final int StatsPeriodSeconds = 60;
 
+    //todo transfer zk server uri using config, dlog namespace need zk server uri.
     public DlogBasedManagedLedgerFactory(ClientConfiguration bkClientConfiguration) throws Exception {
         this(bkClientConfiguration, new ManagedLedgerFactoryConfig());
     }
@@ -115,6 +118,7 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
         this.entryCacheManager = new DlogBasedEntryCacheManager(this);
         this.statsTask = executor.scheduleAtFixedRate(() -> refreshStats(), 0, StatsPeriodSeconds, TimeUnit.SECONDS);
         this.dlconfig = new DistributedLogConfiguration();
+        this.ZKS = "127.0.0.1:2181";
     }
 
     public DlogBasedManagedLedgerFactory(BookKeeper bookKeeper, ZooKeeper zooKeeper) throws Exception {
@@ -125,15 +129,16 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
             throws Exception {
         this.bookKeeper = bookKeeper;
         this.isBookkeeperManaged = false;
-        this.zookeeper = null;
+        this.zookeeper = zooKeeper;
         this.store = new DlogBasedMetaStoreImplZookeeper(zooKeeper, orderedExecutor);
         this.mlconfig = mlconfig;
         this.mbean = new DlogBasedManagedLedgerFactoryMBean(this);
         this.entryCacheManager = new DlogBasedEntryCacheManager(this);
         this.statsTask = executor.scheduleAtFixedRate(() -> refreshStats(), 0, StatsPeriodSeconds, TimeUnit.SECONDS);
-
         this.dlconfig = new DistributedLogConfiguration();
-       }
+        this.ZKS = "127.0.0.1:2181";
+
+    }
 
     private synchronized void refreshStats() {
         long now = System.nanoTime();
@@ -226,9 +231,13 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
         String namespace = "";
         for(int i = 0; i < parts.length - 1; i++)
             namespace += parts[i];
+        if(namespace.equals(""))
+            namespace = defaultNS;
         //todo check namespace str
 //        String dlUri = "Distributedlog://" + zookeeper.toString() + "/" + "persistent://test-property/cl1/ns1";
-        final String uri = namespace;
+        final String uri = "distributedlog://" + ZKS + "/" + namespace;
+//        log.info("ML name is {}, Pulsar topic uri is {} ", name, uri);
+
         //todo how to update dlog namespace's config, such as rolling time
         dlNamespaces.computeIfAbsent(uri,(dlogNamespace) ->{
             // Create the namespace ledger
@@ -239,6 +248,7 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
                         .conf(dlconfig)
                         .uri(new URI(uri))
                         .build();
+
             }catch (Exception e){
                 // Clean the map if initialization fails
                 dlNamespaces.remove(uri, namespace1);

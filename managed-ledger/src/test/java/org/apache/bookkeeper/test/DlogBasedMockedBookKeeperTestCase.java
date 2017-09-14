@@ -18,50 +18,62 @@
  */
 package org.apache.bookkeeper.test;
 
-import java.lang.reflect.Method;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
+import dlshade.org.apache.bookkeeper.shims.zk.ZooKeeperServerShim;
 import org.apache.bookkeeper.client.MockBookKeeper;
 import org.apache.bookkeeper.conf.ClientConfiguration;
 import org.apache.bookkeeper.mledger.ManagedLedgerFactoryConfig;
+import org.apache.bookkeeper.mledger.dlog.DlogBasedManagedLedgerFactory;
 import org.apache.bookkeeper.mledger.impl.ManagedLedgerFactoryImpl;
+import org.apache.bookkeeper.util.IOUtils;
 import org.apache.bookkeeper.util.OrderedSafeExecutor;
 import org.apache.bookkeeper.util.ZkUtils;
+import org.apache.commons.lang3.tuple.Pair;
+import org.apache.distributedlog.LocalDLMEmulator;
+import org.apache.zookeeper.LocalZooKeeperServer;
 import org.apache.zookeeper.MockZooKeeper;
+import org.apache.zookeeper.ZooKeeper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
+import java.io.File;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
 /**
  * A class runs several bookie servers for testing.
  */
-public abstract class MockedBookKeeperTestCase {
+public abstract class DlogBasedMockedBookKeeperTestCase {
 
-    static final Logger LOG = LoggerFactory.getLogger(MockedBookKeeperTestCase.class);
+    static final Logger LOG = LoggerFactory.getLogger(DlogBasedMockedBookKeeperTestCase.class);
 
-    // ZooKeeper related variables
-    protected MockZooKeeper zkc;
+    //zk related variables
+    protected ZooKeeper zkc;
+    protected LocalZooKeeperServer zks;
+
 
     // BookKeeper related variables
     protected MockBookKeeper bkc;
     protected int numBookies;
 
-    protected ManagedLedgerFactoryImpl factory;
+    protected DlogBasedManagedLedgerFactory factory;
 
     protected ClientConfiguration baseClientConf = new ClientConfiguration();
 
     protected OrderedSafeExecutor executor;
     protected ExecutorService cachedExecutor;
 
-    public MockedBookKeeperTestCase() {
+    public DlogBasedMockedBookKeeperTestCase() {
         // By default start a 3 bookies cluster
         this(3);
     }
 
-    public MockedBookKeeperTestCase(int numBookies) {
+    public DlogBasedMockedBookKeeperTestCase(int numBookies) {
         this.numBookies = numBookies;
     }
 
@@ -79,7 +91,7 @@ public abstract class MockedBookKeeperTestCase {
         executor = new OrderedSafeExecutor(2, "test");
         cachedExecutor = Executors.newCachedThreadPool();
         ManagedLedgerFactoryConfig conf = new ManagedLedgerFactoryConfig();
-        factory = new ManagedLedgerFactoryImpl(bkc, zkc, conf);
+        factory = new DlogBasedManagedLedgerFactory(bkc, zkc, conf);
     }
 
     @AfterMethod
@@ -95,12 +107,17 @@ public abstract class MockedBookKeeperTestCase {
     }
 
     /**
-     * Start cluster
+     * Start cluster,include mock bk server,local zk server, mock zk client.
      *
      * @throws Exception
      */
     protected void startBookKeeper() throws Exception {
+
+
+        zks = new LocalZooKeeperServer(2181);
+        zks.start(1000);
         zkc = MockZooKeeper.newInstance();
+
         for (int i = 0; i < numBookies; i++) {
             ZkUtils.createFullPathOptimistic(zkc, "/ledgers/available/192.168.1.1:" + (5000 + i), "".getBytes(), null,
                     null);
@@ -116,7 +133,10 @@ public abstract class MockedBookKeeperTestCase {
     }
 
     protected void stopZooKeeper() throws Exception {
-        zkc.shutdown();
+        zks.shutdown();
+        zkc.close();
+
     }
+
 
 }
