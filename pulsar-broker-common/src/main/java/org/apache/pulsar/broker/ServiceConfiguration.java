@@ -216,7 +216,11 @@ public class ServiceConfiguration implements PulsarConfiguration {
     @FieldContext(required = false)
     private String bookkeeperClientIsolationGroups;
 
+
+
     /**** --- Managed Ledger --- ****/
+    //Managed Ledger impl type, 0 indicate bk, 1 for dlog.
+    private int managedLedgerDefaultImplType = 0;
     // Number of bookies to use when creating a ledger
     @FieldContext(minValue = 1)
     private int managedLedgerDefaultEnsembleSize = 1;
@@ -1191,4 +1195,11 @@ public class ServiceConfiguration implements PulsarConfiguration {
     public int getWebSocketConnectionsPerBroker() { return webSocketConnectionsPerBroker; }
 
     public void setWebSocketConnectionsPerBroker(int webSocketConnectionsPerBroker) { this.webSocketConnectionsPerBroker = webSocketConnectionsPerBroker; }
+    public int getManagedLedgerDefaultImplType() {
+        return managedLedgerDefaultImplType;
+    }
+
+    public void setManagedLedgerDefaultImplType(int managedLedgerDefaultImplType) {
+        this.managedLedgerDefaultImplType = managedLedgerDefaultImplType;
+    }
 }
