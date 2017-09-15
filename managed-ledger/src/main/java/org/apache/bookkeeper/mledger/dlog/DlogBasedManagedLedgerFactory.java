@@ -85,6 +85,10 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
     private final ScheduledFuture<?> statsTask;
     private static final int StatsPeriodSeconds = 60;
 
+    // used in test, todo  delete it
+    public DlogBasedManagedLedgerFactory(BookKeeper bookKeeper, ZooKeeper zooKeeper) throws Exception {
+              this(bookKeeper, "127.0.0.1:2181", new ManagedLedgerFactoryConfig());
+    }
     //todo make sure dlog log stream using steps correctly:1. bind namespace 2.create log stream
 
     public DlogBasedManagedLedgerFactory(BookKeeper bookKeeper, String zkServers) throws Exception {

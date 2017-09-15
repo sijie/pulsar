@@ -91,7 +91,7 @@ public abstract class DlogBasedMockedBookKeeperTestCase {
         executor = new OrderedSafeExecutor(2, "test");
         cachedExecutor = Executors.newCachedThreadPool();
         ManagedLedgerFactoryConfig conf = new ManagedLedgerFactoryConfig();
-        factory = new DlogBasedManagedLedgerFactory(bkc, zkc, conf);
+        factory = new DlogBasedManagedLedgerFactory(bkc, "127.0.0.1:2181", conf);
     }
 
     @AfterMethod
