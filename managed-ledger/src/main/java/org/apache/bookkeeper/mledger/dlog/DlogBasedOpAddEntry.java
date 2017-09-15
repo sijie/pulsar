@@ -156,9 +156,9 @@ class DlogBasedOpAddEntry extends SafeRunnable implements FutureEventListener<DL
         ml.getExecutor().submitOrdered(ml.getName(), this);
     }
 
-    //todo what other action should to do after write fail
     @Override
     public void onFailure(Throwable throwable) {
+        ml.dealAddFailure();
         ml.mbean.recordAddEntryError();
     }
 }

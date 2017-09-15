@@ -24,6 +24,7 @@ import java.io.IOException;
 import org.apache.bookkeeper.client.BookKeeper;
 import org.apache.bookkeeper.mledger.ManagedLedgerFactory;
 import org.apache.bookkeeper.mledger.ManagedLedgerFactoryConfig;
+import org.apache.bookkeeper.mledger.dlog.DlogBasedManagedLedgerFactory;
 import org.apache.bookkeeper.mledger.impl.ManagedLedgerFactoryImpl;
 import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.zookeeper.ZooKeeper;
@@ -45,7 +46,11 @@ public class ManagedLedgerClientFactory implements Closeable {
         managedLedgerFactoryConfig.setMaxCacheSize(conf.getManagedLedgerCacheSizeMB() * 1024L * 1024L);
         managedLedgerFactoryConfig.setCacheEvictionWatermark(conf.getManagedLedgerCacheEvictionWatermark());
 
-        this.managedLedgerFactory = new ManagedLedgerFactoryImpl(bkClient, zkClient, managedLedgerFactoryConfig);
+
+        if(conf.getManagedLedgerDefaultImplType() == 0)
+            this.managedLedgerFactory = new ManagedLedgerFactoryImpl(bkClient, zkClient, managedLedgerFactoryConfig);
+        else
+            this.managedLedgerFactory = new DlogBasedManagedLedgerFactory(bkClient,conf.getZookeeperServers(),managedLedgerFactoryConfig);
     }
 
     public ManagedLedgerFactory getManagedLedgerFactory() {

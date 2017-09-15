@@ -619,9 +619,17 @@ public class DlogBasedManagedCursor implements ManagedCursor {
         return getNumberOfEntries(Range.closedOpen(readPosition, ledger.getLastPosition().getNext()));
     }
 
+    @Override
+    public int getTotalNonContiguousDeletedMessagesRange() {
+        return individualDeletedMessages.asRanges().size();
+    }
+
+
+    @Override
     public long getNumberOfEntriesSinceFirstNotAckedMessage() {
         return ledger.getNumberOfEntries(Range.openClosed(markDeletePosition, readPosition));
     }
+
 
     @Override
     public long getNumberOfEntriesInBacklog() {
@@ -993,6 +1001,7 @@ public class DlogBasedManagedCursor implements ManagedCursor {
         }
         return allEntries - deletedEntries;
     }
+
 
     @Override
     public void markDelete(Position position) throws InterruptedException, ManagedLedgerException {
