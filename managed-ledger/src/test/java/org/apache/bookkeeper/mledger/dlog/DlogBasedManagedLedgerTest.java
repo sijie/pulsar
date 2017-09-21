@@ -24,6 +24,8 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.buffer.Unpooled;
 import org.apache.bookkeeper.client.BKException;
+import org.apache.bookkeeper.client.MockBookKeeper;
+import org.apache.bookkeeper.conf.ClientConfiguration;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.AddEntryCallback;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.CloseCallback;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.DeleteLedgerCallback;
@@ -40,9 +42,8 @@ import org.apache.bookkeeper.mledger.ManagedLedgerException;
 import org.apache.bookkeeper.mledger.ManagedLedgerException.ManagedLedgerFencedException;
 import org.apache.bookkeeper.mledger.ManagedLedgerException.MetaStoreException;
 import org.apache.bookkeeper.mledger.ManagedLedgerFactory;
+import org.apache.bookkeeper.mledger.ManagedLedgerFactoryConfig;
 import org.apache.bookkeeper.mledger.Position;
-import org.apache.bookkeeper.mledger.dlog.DlogBasedEntryCache;
-import org.apache.bookkeeper.mledger.dlog.DlogBasedManagedLedgerFactory;
 import org.apache.bookkeeper.mledger.impl.MetaStore;
 import org.apache.bookkeeper.mledger.impl.MetaStore.MetaStoreCallback;
 import org.apache.bookkeeper.mledger.impl.MetaStore.Stat;
@@ -50,21 +51,26 @@ import org.apache.bookkeeper.mledger.impl.MetaStoreImplZookeeper;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats.ManagedLedgerInfo;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats.ManagedLedgerInfo.LedgerInfo;
 import org.apache.bookkeeper.mledger.util.Pair;
-import org.apache.bookkeeper.test.DlogBasedMockedBookKeeperTestCase;
+import org.apache.bookkeeper.util.OrderedSafeExecutor;
+import org.apache.bookkeeper.util.ZkUtils;
+import org.apache.distributedlog.TestDistributedLogBase;
 import org.apache.pulsar.common.api.DoubleByteBuf;
 import org.apache.pulsar.common.api.proto.PulsarApi.MessageMetadata;
 import org.apache.pulsar.common.util.protobuf.ByteBufCodedOutputStream;
 import org.apache.zookeeper.CreateMode;
-import org.apache.zookeeper.KeeperException.Code;
 import org.apache.zookeeper.ZooDefs;
 import org.apache.zookeeper.ZooKeeper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.net.URI;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -73,6 +79,7 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -81,12 +88,90 @@ import java.util.function.Predicate;
 
 import static org.testng.Assert.*;
 
-public class DlogBasedManagedLedgerTest extends DlogBasedMockedBookKeeperTestCase {
+public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
 
     private static final Logger log = LoggerFactory.getLogger(DlogBasedManagedLedgerTest.class);
 
     private static final Charset Encoding = Charsets.UTF_8;
 
+
+
+    // BookKeeper related variables
+    protected MockBookKeeper bkc;
+    protected int numBookies = 3;
+
+    protected DlogBasedManagedLedgerFactory factory;
+
+    protected ClientConfiguration baseClientConf = new ClientConfiguration();
+
+    protected OrderedSafeExecutor executor;
+    protected ExecutorService cachedExecutor;
+
+    @BeforeMethod
+    public void setUp(Method method) throws Exception {
+
+        log.info(">>>>>> starting {}", method);
+        log.info(">>>>>> explictly call father's setup");
+        DlogBasedManagedLedgerTest.setupCluster();
+        setup();
+        try {
+            // start bookkeeper service
+            startBK();
+        } catch (Exception e) {
+            log.error("Error setting up bk", e);
+            throw e;
+        }
+        executor = new OrderedSafeExecutor(2, "test");
+        cachedExecutor = Executors.newCachedThreadPool();
+        ManagedLedgerFactoryConfig conf = new ManagedLedgerFactoryConfig();
+        factory = new DlogBasedManagedLedgerFactory(bkc, zkServers, conf, createDLMURI("/default_namespace"));
+    }
+
+    @AfterMethod
+    public void tearDown(Method method) throws Exception {
+        log.info(">>>>>> explictly call father's teardown");
+        DlogBasedManagedLedgerTest.teardownCluster();
+        teardown();
+        log.info("@@@@@@@@@ stopping " + method);
+        factory.shutdown();
+        factory = null;
+        bkc.shutdown();
+        executor.shutdown();
+        cachedExecutor.shutdown();
+        log.info("--------- stopped {}", method);
+    }
+
+    /**
+     * Start cluster,include mock bk server client.
+     *
+     * @throws Exception
+     */
+    protected void startBK() throws Exception {
+
+        if(zkc == null)
+            log.error("zkc is null");
+
+        for (int i = 0; i < numBookies; i++) {
+            ZkUtils.createFullPathOptimistic(zkc, "/ledgers/available/192.168.1.1:" + (5000 + i), "".getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE,CreateMode.EPHEMERAL );
+        }
+//        log.info("is ledgers created {}",zkc.exists("/ledgers/available",false));
+
+        //todo dlog dlmEmulator start 3 bookies, and register LAYOUT, is this conflict with that?
+        if(zkc.exists("/ledgers/LAYOUT",false) != null)
+            zkc.delete("/ledgers/LAYOUT",zkc.exists("/ledgers/LAYOUT",false).getVersion());
+        zkc.create("/ledgers/LAYOUT", "1\nflat:1".getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+
+        bkc = new MockBookKeeper(baseClientConf, zkc);
+    }
+
+
+    protected void stopBookKeeper() throws Exception {
+        bkc.shutdown();
+    }
+
+    protected void stopZooKeeper() throws Exception {
+        zkc.close();
+    }
     @Test
     public void managedLedgerApi() throws Exception {
         ManagedLedger ledger = factory.open("my_test_ledger");
@@ -175,7 +260,7 @@ public class DlogBasedManagedLedgerTest extends DlogBasedMockedBookKeeperTestCas
         log.info("Closing ledger and reopening");
 
         // / Reopen the same managed-ledger
-        DlogBasedManagedLedgerFactory factory2 = new DlogBasedManagedLedgerFactory(bkc, bkc.getZkHandle());
+        DlogBasedManagedLedgerFactory factory2 = new DlogBasedManagedLedgerFactory(bkc, zkServers, createDLMURI("/default_namespace"));
         ledger = factory2.open("my_test_ledger");
 
         cursor = ledger.openCursor("c1");
@@ -860,7 +945,7 @@ public class DlogBasedManagedLedgerTest extends DlogBasedMockedBookKeeperTestCas
         ledger.close();
 
         // Create a new factory and re-open the same managed ledger
-        factory = new DlogBasedManagedLedgerFactory(bkc, zkc);
+        factory = new DlogBasedManagedLedgerFactory(bkc, zkServers, createDLMURI("/default_namespace"));
 
         ledger = factory.open("my_test_ledger");
 
@@ -885,12 +970,12 @@ public class DlogBasedManagedLedgerTest extends DlogBasedMockedBookKeeperTestCas
 
     @Test(enabled = false)
     public void fenceManagedLedger() throws Exception {
-        ManagedLedgerFactory factory1 = new DlogBasedManagedLedgerFactory(bkc, bkc.getZkHandle());
+        ManagedLedgerFactory factory1 = new DlogBasedManagedLedgerFactory(bkc, zkServers, createDLMURI("/default_namespace"));
         ManagedLedger ledger1 = factory1.open("my_test_ledger");
         ManagedCursor cursor1 = ledger1.openCursor("c1");
         ledger1.addEntry("entry-1".getBytes(Encoding));
 
-        ManagedLedgerFactory factory2 = new DlogBasedManagedLedgerFactory(bkc, bkc.getZkHandle());
+        ManagedLedgerFactory factory2 = new DlogBasedManagedLedgerFactory(bkc, zkServers, createDLMURI("/default_namespace"));
         ManagedLedger ledger2 = factory2.open("my_test_ledger");
         ManagedCursor cursor2 = ledger2.openCursor("c1");
 

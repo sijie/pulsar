@@ -91,10 +91,6 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
     }
     //todo make sure dlog log stream using steps correctly:1. bind namespace 2.create log stream
 
-    public DlogBasedManagedLedgerFactory(BookKeeper bookKeeper, String zkServers) throws Exception {
-        this(bookKeeper, zkServers, new ManagedLedgerFactoryConfig());
-    }
-
     public DlogBasedManagedLedgerFactory(BookKeeper bookKeeper, String zkServers, ManagedLedgerFactoryConfig mlconfig)
             throws Exception {
         this.dlconfig = new DistributedLogConfiguration();
@@ -133,6 +129,8 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
 
 
         //initialize dl namespace
+        //set dlog transmit outputBuffer size to 0, entry will have only one record.
+        dlconfig.setOutputBufferSize(0);
         try{
             dlNamespace = NamespaceBuilder.newBuilder()
                     .conf(dlconfig)
@@ -146,7 +144,56 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
 
 
     }
+    public DlogBasedManagedLedgerFactory(BookKeeper bookKeeper, String zkServers, URI namespaceUri) throws Exception {
+        this(bookKeeper, zkServers, new ManagedLedgerFactoryConfig(),namespaceUri);
+    }
+    public DlogBasedManagedLedgerFactory(BookKeeper bookKeeper, String zkServers, ManagedLedgerFactoryConfig mlconfig, URI namespaceUri)
+            throws Exception {
+        this.dlconfig = new DistributedLogConfiguration();
+        this.bookKeeper = bookKeeper;
+        this.isBookkeeperManaged = false;
+        this.mlconfig = mlconfig;
 
+        final CountDownLatch counter = new CountDownLatch(1);
+        final String zookeeperQuorum = checkNotNull(zkServers);
+        //just use dlzkSessionTimeout
+        zookeeper = new ZooKeeper(zookeeperQuorum, dlconfig.getZKSessionTimeoutMilliseconds(), event -> {
+            if (event.getState().equals(Watcher.Event.KeeperState.SyncConnected)) {
+                log.info("Connected to zookeeper");
+                counter.countDown();
+            } else {
+                log.error("Error connecting to zookeeper {}", event);
+            }
+        });
+
+        if (!counter.await(dlconfig.getZKSessionTimeoutMilliseconds(), TimeUnit.MILLISECONDS)
+                || zookeeper.getState() != States.CONNECTED) {
+            throw new ManagedLedgerException("Error connecting to ZooKeeper at '" + zookeeperQuorum + "'");
+        }
+
+        this.metaStore = new DlogBasedMetaStoreImplZookeeper(zookeeper, orderedExecutor);
+        this.mbean = new DlogBasedManagedLedgerFactoryMBean(this);
+        this.entryCacheManager = new DlogBasedEntryCacheManager(this);
+        this.statsTask = executor.scheduleAtFixedRate(() -> refreshStats(), 0, StatsPeriodSeconds, TimeUnit.SECONDS);
+        this.zkServers = zkServers;
+
+
+        //initialize dl namespace
+        //set dlog transmit outputBuffer size to 0, entry will have only one record.
+        dlconfig.setOutputBufferSize(0);
+        try{
+            dlNamespace = NamespaceBuilder.newBuilder()
+                    .conf(dlconfig)
+                    .uri(namespaceUri)
+                    .build();
+
+        }catch (Exception e){
+            log.error("[{}] Got exception while trying to initialize dlog namespace", namespaceUri, e);
+            throw new ManagedLedgerException("Error initialize dlog namespace '" + e.getMessage());
+        }
+
+
+    }
     private synchronized void refreshStats() {
         long now = System.nanoTime();
         long period = now - lastStatTimestamp;
@@ -259,7 +306,7 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
                     }
                 }, null);
             }catch (IOException ioe){
-                log.error("[{}] Got exception while trying to initialize manged-ledger", name, ioe);
+                log.error("[{}] Got exception while trying to initialize manged-ledger {}", name, ioe.toString());
             }
             return future;
         }).thenAccept(ml -> {
