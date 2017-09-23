@@ -77,4 +77,8 @@ public class DlogBasedPosition implements Position, Comparable<DlogBasedPosition
         //todo is this ok?
         return dlsn.hashCode();
     }
+    @Override
+    public String toString(){
+        return dlsn.toString();
+    }
 }

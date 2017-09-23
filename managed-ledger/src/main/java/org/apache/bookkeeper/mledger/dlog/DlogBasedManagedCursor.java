@@ -328,7 +328,6 @@ public class DlogBasedManagedCursor implements ManagedCursor {
             position = DlogBasedPosition.get(nextExistingLedger, -1);
         }
         log.info("[{}] Cursor {} recovered to position {}", ledger.getName(), name, position);
-
         messagesConsumedCounter = -getNumberOfEntries(Range.openClosed(position, ledger.getLastPosition()));
         markDeletePosition = position;
         readPosition = ledger.getNextValidPosition(position);
