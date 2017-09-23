@@ -107,6 +107,12 @@ public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
     protected OrderedSafeExecutor executor;
     protected ExecutorService cachedExecutor;
 
+    //Dlog specific
+    URI namespaceUri;
+    public DlogBasedManagedLedgerTest(){
+        log.info("bug enable {} ",log.isDebugEnabled());
+    }
+
     @BeforeMethod
     public void setUp(Method method) throws Exception {
 
@@ -124,7 +130,15 @@ public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
         executor = new OrderedSafeExecutor(2, "test");
         cachedExecutor = Executors.newCachedThreadPool();
         ManagedLedgerFactoryConfig conf = new ManagedLedgerFactoryConfig();
-        factory = new DlogBasedManagedLedgerFactory(bkc, zkServers, conf, createDLMURI("/default_namespace"));
+        try{
+            namespaceUri = createDLMURI("/default_namespace");
+            ensureURICreated(namespaceUri);
+            log.info("created DLM URI {} succeed ", namespaceUri.toString());
+        }
+        catch (Exception ioe){
+            log.info("create DLM URI error {}", ioe.toString());
+        }
+        factory = new DlogBasedManagedLedgerFactory(bkc, zkServers, conf, namespaceUri);
     }
 
     @AfterMethod
@@ -156,10 +170,10 @@ public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
         }
 //        log.info("is ledgers created {}",zkc.exists("/ledgers/available",false));
 
-        //todo dlog dlmEmulator start 3 bookies, and register LAYOUT, is this conflict with that?
-        if(zkc.exists("/ledgers/LAYOUT",false) != null)
-            zkc.delete("/ledgers/LAYOUT",zkc.exists("/ledgers/LAYOUT",false).getVersion());
-        zkc.create("/ledgers/LAYOUT", "1\nflat:1".getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+        //todo use LocalDLMEmulator to get a bk client
+//        if(zkc.exists("/ledgers/LAYOUT",false) != null)
+//            zkc.delete("/ledgers/LAYOUT",zkc.exists("/ledgers/LAYOUT",false).getVersion());
+//        zkc.create("/ledgers/LAYOUT", "1\nflat:1".getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
 
         bkc = new MockBookKeeper(baseClientConf, zkc);
     }
