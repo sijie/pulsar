@@ -184,22 +184,24 @@ public class ManagedLedgerConfig {
         this.ackQuorumSize = ackQuorumSize;
         return this;
     }
-
-    /**
-     * @return the digestType
-     */
-    public DigestType getDigestType() {
-        return digestType;
-    }
-
-    /**
-     * @param digestType
-     *            the digestType to set
-     */
-    public ManagedLedgerConfig setDigestType(DigestType digestType) {
-        this.digestType = digestType;
-        return this;
-    }
+    //todo redesign the config architecture
+// comment below to resolve the bk version conflict,
+// this will cause impl error if not change their call to this method
+//    /**
+//     * @return the digestType
+//     */
+//    public DigestType getDigestType() {
+//        return digestType;
+//    }
+//
+//    /**
+//     * @param digestType
+//     *            the digestType to set
+//     */
+//    public ManagedLedgerConfig setDigestType(DigestType digestType) {
+//        this.digestType = digestType;
+//        return this;
+//    }
 
     /**
      * @return the password

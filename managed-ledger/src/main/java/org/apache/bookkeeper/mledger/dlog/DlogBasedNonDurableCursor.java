@@ -20,7 +20,7 @@ package org.apache.bookkeeper.mledger.dlog;
 
 import com.google.common.base.Objects;
 import com.google.common.collect.Range;
-import org.apache.bookkeeper.client.BookKeeper;
+import dlshade.org.apache.bookkeeper.client.BookKeeper;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.CloseCallback;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.DeleteCursorCallback;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.MarkDeleteCallback;
@@ -36,7 +36,7 @@ import java.util.Map;
 
 public class DlogBasedNonDurableCursor extends DlogBasedManagedCursor {
 
-    DlogBasedNonDurableCursor(BookKeeper bookkeeper, ManagedLedgerConfig config, DlogBasedManagedLedger ledger, String cursorName,
+    DlogBasedNonDurableCursor(BookKeeper bookkeeper, DlogBasedManagedLedgerConfig config, DlogBasedManagedLedger ledger, String cursorName,
                               DlogBasedPosition startCursorPosition) {
         super(bookkeeper, config, ledger, cursorName);
 

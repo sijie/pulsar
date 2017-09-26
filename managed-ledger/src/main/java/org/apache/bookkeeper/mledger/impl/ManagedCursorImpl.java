@@ -84,7 +84,7 @@ import com.google.protobuf.InvalidProtocolBufferException;
 public class ManagedCursorImpl implements ManagedCursor {
 
     protected final BookKeeper bookkeeper;
-    protected final ManagedLedgerConfig config;
+    protected final ManagedLedgerConfigImpl config;
     protected final ManagedLedgerImpl ledger;
     private final String name;
 
@@ -170,7 +170,7 @@ public class ManagedCursorImpl implements ManagedCursor {
 
     ManagedCursorImpl(BookKeeper bookkeeper, ManagedLedgerConfig config, ManagedLedgerImpl ledger, String cursorName) {
         this.bookkeeper = bookkeeper;
-        this.config = config;
+        this.config = (ManagedLedgerConfigImpl)config;
         this.ledger = ledger;
         this.name = cursorName;
         STATE_UPDATER.set(this, State.Uninitialized);

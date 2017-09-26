@@ -16,25 +16,23 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.bookkeeper.mledger.dlog;
+package org.apache.bookkeeper.mledger.impl;
 
-import static com.google.common.base.Preconditions.checkArgument;
+import com.google.common.annotations.Beta;
+import com.google.common.base.Charsets;
+import org.apache.bookkeeper.client.BookKeeper.DigestType;
+import org.apache.bookkeeper.mledger.ManagedLedgerConfig;
 
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 
-import dlshade.org.apache.bookkeeper.client.BookKeeper.DigestType;
-
-import com.google.common.annotations.Beta;
-import com.google.common.base.Charsets;
-import org.apache.bookkeeper.mledger.ManagedLedgerConfig;
+import static com.google.common.base.Preconditions.checkArgument;
 
 /**
  * Configuration class for a ManagedLedger
- * Note, only change the bk digest type to deal bk version conflict
  */
 @Beta
-public class DlogBasedManagedLedgerConfig extends ManagedLedgerConfig{
+public class ManagedLedgerConfigImpl extends ManagedLedgerConfig{
 
     private int maxUnackedRangesToPersist = 10000;
     private int maxUnackedRangesToPersistInZk = 1000;
@@ -68,7 +66,7 @@ public class DlogBasedManagedLedgerConfig extends ManagedLedgerConfig{
      * @param maxEntriesPerLedger
      *            the maxEntriesPerLedger to set
      */
-    public DlogBasedManagedLedgerConfig setMaxEntriesPerLedger(int maxEntriesPerLedger) {
+    public ManagedLedgerConfigImpl setMaxEntriesPerLedger(int maxEntriesPerLedger) {
         this.maxEntriesPerLedger = maxEntriesPerLedger;
         return this;
     }
@@ -84,7 +82,7 @@ public class DlogBasedManagedLedgerConfig extends ManagedLedgerConfig{
      * @param maxSizePerLedgerMb
      *            the maxSizePerLedgerMb to set
      */
-    public DlogBasedManagedLedgerConfig setMaxSizePerLedgerMb(int maxSizePerLedgerMb) {
+    public ManagedLedgerConfigImpl setMaxSizePerLedgerMb(int maxSizePerLedgerMb) {
         this.maxSizePerLedgerMb = maxSizePerLedgerMb;
         return this;
     }
@@ -150,7 +148,7 @@ public class DlogBasedManagedLedgerConfig extends ManagedLedgerConfig{
      * @param ensembleSize
      *            the ensembleSize to set
      */
-    public DlogBasedManagedLedgerConfig setEnsembleSize(int ensembleSize) {
+    public ManagedLedgerConfigImpl setEnsembleSize(int ensembleSize) {
         this.ensembleSize = ensembleSize;
         return this;
     }
@@ -173,7 +171,7 @@ public class DlogBasedManagedLedgerConfig extends ManagedLedgerConfig{
      * @param writeQuorumSize
      *            the writeQuorumSize to set
      */
-    public DlogBasedManagedLedgerConfig setWriteQuorumSize(int writeQuorumSize) {
+    public ManagedLedgerConfigImpl setWriteQuorumSize(int writeQuorumSize) {
         this.writeQuorumSize = writeQuorumSize;
         return this;
     }
@@ -182,7 +180,7 @@ public class DlogBasedManagedLedgerConfig extends ManagedLedgerConfig{
      * @param ackQuorumSize
      *            the ackQuorumSize to set
      */
-    public DlogBasedManagedLedgerConfig setAckQuorumSize(int ackQuorumSize) {
+    public ManagedLedgerConfigImpl setAckQuorumSize(int ackQuorumSize) {
         this.ackQuorumSize = ackQuorumSize;
         return this;
     }
@@ -198,7 +196,7 @@ public class DlogBasedManagedLedgerConfig extends ManagedLedgerConfig{
      * @param digestType
      *            the digestType to set
      */
-    public DlogBasedManagedLedgerConfig setDigestType(DigestType digestType) {
+    public ManagedLedgerConfigImpl setDigestType(DigestType digestType) {
         this.digestType = digestType;
         return this;
     }
@@ -214,7 +212,7 @@ public class DlogBasedManagedLedgerConfig extends ManagedLedgerConfig{
      * @param password
      *            the password to set
      */
-    public DlogBasedManagedLedgerConfig setPassword(String password) {
+    public ManagedLedgerConfigImpl setPassword(String password) {
         this.password = password.getBytes(Charsets.UTF_8);
         return this;
     }
@@ -230,7 +228,7 @@ public class DlogBasedManagedLedgerConfig extends ManagedLedgerConfig{
      * @param metadataEnsembleSize
      *            the metadataEnsembleSize to set
      */
-    public DlogBasedManagedLedgerConfig setMetadataEnsembleSize(int metadataEnsembleSize) {
+    public ManagedLedgerConfigImpl setMetadataEnsembleSize(int metadataEnsembleSize) {
         this.metadataEnsembleSize = metadataEnsembleSize;
         return this;
     }
@@ -253,7 +251,7 @@ public class DlogBasedManagedLedgerConfig extends ManagedLedgerConfig{
      * @param metadataAckQuorumSize
      *            the metadataAckQuorumSize to set
      */
-    public DlogBasedManagedLedgerConfig setMetadataAckQuorumSize(int metadataAckQuorumSize) {
+    public ManagedLedgerConfigImpl setMetadataAckQuorumSize(int metadataAckQuorumSize) {
         this.metadataAckQuorumSize = metadataAckQuorumSize;
         return this;
     }
@@ -262,7 +260,7 @@ public class DlogBasedManagedLedgerConfig extends ManagedLedgerConfig{
      * @param metadataWriteQuorumSize
      *            the metadataWriteQuorumSize to set
      */
-    public DlogBasedManagedLedgerConfig setMetadataWriteQuorumSize(int metadataWriteQuorumSize) {
+    public ManagedLedgerConfigImpl setMetadataWriteQuorumSize(int metadataWriteQuorumSize) {
         this.metadataWriteQuorumSize = metadataWriteQuorumSize;
         return this;
     }
@@ -278,7 +276,7 @@ public class DlogBasedManagedLedgerConfig extends ManagedLedgerConfig{
      * @param metadataMaxEntriesPerLedger
      *            the metadataMaxEntriesPerLedger to set
      */
-    public DlogBasedManagedLedgerConfig setMetadataMaxEntriesPerLedger(int metadataMaxEntriesPerLedger) {
+    public ManagedLedgerConfigImpl setMetadataMaxEntriesPerLedger(int metadataMaxEntriesPerLedger) {
         this.metadataMaxEntriesPerLedger = metadataMaxEntriesPerLedger;
         return this;
     }
@@ -294,7 +292,7 @@ public class DlogBasedManagedLedgerConfig extends ManagedLedgerConfig{
      * @param ledgerRolloverTimeout
      *            the ledgerRolloverTimeout to set
      */
-    public DlogBasedManagedLedgerConfig setLedgerRolloverTimeout(int ledgerRolloverTimeout) {
+    public ManagedLedgerConfigImpl setLedgerRolloverTimeout(int ledgerRolloverTimeout) {
         this.ledgerRolloverTimeout = ledgerRolloverTimeout;
         return this;
     }
@@ -313,7 +311,7 @@ public class DlogBasedManagedLedgerConfig extends ManagedLedgerConfig{
      * @param throttleMarkDelete
      *            the max number of mark-delete calls allowed per second
      */
-    public DlogBasedManagedLedgerConfig setThrottleMarkDelete(double throttleMarkDelete) {
+    public ManagedLedgerConfigImpl setThrottleMarkDelete(double throttleMarkDelete) {
         checkArgument(throttleMarkDelete >= 0.0);
         this.throttleMarkDelete = throttleMarkDelete;
         return this;
@@ -325,7 +323,7 @@ public class DlogBasedManagedLedgerConfig extends ManagedLedgerConfig{
      * @param unit
      *            time unit for retention time
      */
-    public DlogBasedManagedLedgerConfig setRetentionTime(int retentionTime, TimeUnit unit) {
+    public ManagedLedgerConfigImpl setRetentionTime(int retentionTime, TimeUnit unit) {
         this.retentionTimeMs = unit.toMillis(retentionTime);
         return this;
     }
@@ -342,7 +340,7 @@ public class DlogBasedManagedLedgerConfig extends ManagedLedgerConfig{
      * @param retentionSizeInMB
      *            quota for message retention
      */
-    public DlogBasedManagedLedgerConfig setRetentionSizeInMB(long retentionSizeInMB) {
+    public ManagedLedgerConfigImpl setRetentionSizeInMB(long retentionSizeInMB) {
         this.retentionSizeInMB = retentionSizeInMB;
         return this;
     }
@@ -367,14 +365,14 @@ public class DlogBasedManagedLedgerConfig extends ManagedLedgerConfig{
      * @param maxUnackedRangesToPersist
      *            max unacked message ranges that will be persisted and receverd.
      */
-    public DlogBasedManagedLedgerConfig setMaxUnackedRangesToPersist(int maxUnackedRangesToPersist) {
+    public ManagedLedgerConfigImpl setMaxUnackedRangesToPersist(int maxUnackedRangesToPersist) {
         this.maxUnackedRangesToPersist = maxUnackedRangesToPersist;
         return this;
     }
-
+    
     /**
      * @return max unacked message ranges up to which it can store in Zookeeper
-     *
+     * 
      */
     public int getMaxUnackedRangesToPersistInZk() {
         return maxUnackedRangesToPersistInZk;
