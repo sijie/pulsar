@@ -2413,7 +2413,7 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
     @Test(timeOut=5000)
     public void testLeakFailedLedgerOfManageCursor() throws Exception {
 
-        ManagedLedgerConfig mlConfig = new ManagedLedgerConfig();
+        ManagedLedgerConfigImpl mlConfig = new ManagedLedgerConfigImpl();
         ManagedLedger ledger = factory.open("my_test_ledger", mlConfig);
 
         ManagedCursorImpl c1 = (ManagedCursorImpl) ledger.openCursor("c1");

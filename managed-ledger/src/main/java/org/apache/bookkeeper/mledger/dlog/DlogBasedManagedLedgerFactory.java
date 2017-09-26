@@ -19,9 +19,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.bookkeeper.client.BKException;
-import org.apache.bookkeeper.client.BookKeeper;
-import org.apache.bookkeeper.conf.ClientConfiguration;
+import dlshade.org.apache.bookkeeper.client.BKException;
+import dlshade.org.apache.bookkeeper.client.BookKeeper;
 import org.apache.bookkeeper.mledger.AsyncCallbacks;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.ManagedLedgerInfoCallback;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.OpenLedgerCallback;
@@ -257,7 +256,7 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
 
     @Override
     public void asyncOpen(String name, OpenLedgerCallback callback, Object ctx) {
-        asyncOpen(name, new ManagedLedgerConfig(), callback, ctx);
+        asyncOpen(name, new DlogBasedManagedLedgerConfig(), callback, ctx);
     }
 
     @Override
@@ -289,7 +288,7 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
         ledgers.computeIfAbsent(name, (mlName) -> {
             // Create the managed ledger
             CompletableFuture<DlogBasedManagedLedger> future = new CompletableFuture<>();
-            final DlogBasedManagedLedger newledger = new DlogBasedManagedLedger(this, bookKeeper,dlNamespace,distributedLogConfiguration, config, metaStore,executor,
+            final DlogBasedManagedLedger newledger = new DlogBasedManagedLedger(this, bookKeeper,dlNamespace,distributedLogConfiguration, (DlogBasedManagedLedgerConfig)config, metaStore,executor,
                     orderedExecutor, name);
             try{
                 newledger.initialize(new ManagedLedgerInitializeLedgerCallback() {

@@ -34,12 +34,11 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 
 import com.google.common.collect.Maps;
-import org.apache.bookkeeper.client.AsyncCallback.CloseCallback;
-import org.apache.bookkeeper.client.AsyncCallback.DeleteCallback;
-import org.apache.bookkeeper.client.BKException;
-import org.apache.bookkeeper.client.BookKeeper;
-import org.apache.bookkeeper.client.LedgerEntry;
-import org.apache.bookkeeper.client.LedgerHandle;
+import dlshade.org.apache.bookkeeper.client.AsyncCallback;
+import dlshade.org.apache.bookkeeper.client.BKException;
+import dlshade.org.apache.bookkeeper.client.BookKeeper;
+import dlshade.org.apache.bookkeeper.client.LedgerEntry;
+import dlshade.org.apache.bookkeeper.client.LedgerHandle;
 import org.apache.bookkeeper.mledger.AsyncCallbacks;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.ClearBacklogCallback;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.FindEntryCallback;
@@ -49,7 +48,7 @@ import org.apache.bookkeeper.mledger.AsyncCallbacks.ReadEntryCallback;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.SkipEntriesCallback;
 import org.apache.bookkeeper.mledger.Entry;
 import org.apache.bookkeeper.mledger.ManagedCursor;
-import org.apache.bookkeeper.mledger.ManagedLedgerConfig;
+import org.apache.bookkeeper.mledger.dlog.DlogBasedManagedLedgerConfig;
 import org.apache.bookkeeper.mledger.ManagedLedgerException;
 import org.apache.bookkeeper.mledger.ManagedLedgerException.CursorAlreadyClosedException;
 import org.apache.bookkeeper.mledger.ManagedLedgerException.MetaStoreException;
@@ -79,7 +78,7 @@ import com.google.protobuf.InvalidProtocolBufferException;
 public class DlogBasedManagedCursor implements ManagedCursor {
 
     protected final BookKeeper bookkeeper;
-    protected final ManagedLedgerConfig config;
+    protected final DlogBasedManagedLedgerConfig config;
     protected final DlogBasedManagedLedger ledger;
     private final String name;
 
@@ -165,7 +164,7 @@ public class DlogBasedManagedCursor implements ManagedCursor {
         void operationFailed(ManagedLedgerException exception);
     }
 
-    DlogBasedManagedCursor(BookKeeper bookkeeper, ManagedLedgerConfig config, DlogBasedManagedLedger ledger, String cursorName) {
+    DlogBasedManagedCursor(BookKeeper bookkeeper, DlogBasedManagedLedgerConfig config, DlogBasedManagedLedger ledger, String cursorName) {
         this.bookkeeper = bookkeeper;
         this.config = config;
         this.ledger = ledger;
@@ -258,50 +257,62 @@ public class DlogBasedManagedCursor implements ManagedCursor {
                 return;
             }
 
-            // Read the last entry in the ledger
-            lh.asyncReadLastEntry((rc1, lh1, seq, ctx1) -> {
-                if (log.isDebugEnabled()) {
-                    log.debug("readComplete rc={} entryId={}", rc1, lh1.getLastAddConfirmed());
-                }
-                if (isBkErrorNotRecoverable(rc1)) {
-                    log.error("[{}] Error reading from metadata ledger {} for consumer {}: {}", ledger.getName(),
-                            ledgerId, name, BKException.getMessage(rc1));
-                    // Rewind to oldest entry available
-                    initialize(getRollbackPosition(info), callback);
-                    return;
-                } else if (rc1 != BKException.Code.OK) {
-                    log.warn("[{}] Error reading from metadata ledger {} for consumer {}: {}", ledger.getName(),
-                            ledgerId, name, BKException.getMessage(rc1));
-
-                    callback.operationFailed(new ManagedLedgerException(BKException.getMessage(rc1)));
-                    return;
-                }
-
-                LedgerEntry entry = seq.nextElement();
-                PositionInfo positionInfo;
-                try {
-                    positionInfo = PositionInfo.parseFrom(entry.getEntry());
-                } catch (InvalidProtocolBufferException e) {
-                    callback.operationFailed(new ManagedLedgerException(e));
-                    return;
-                }
-                Map<String, Long> recoveredProperties = Collections.emptyMap();
-                if (positionInfo.getPropertiesCount() > 0) {
-                    // Recover properties map
-                    recoveredProperties = Maps.newHashMap();
-                    for (int i = 0; i < positionInfo.getPropertiesCount(); i++) {
-                        MLDataFormats.LongProperty property = positionInfo.getProperties(i);
-                        recoveredProperties.put(property.getName(), property.getValue());
+            AsyncCallback.ReadCallback readCallback = new AsyncCallback.ReadCallback() {
+                @Override
+                public void readComplete(int rc, LedgerHandle lh, Enumeration<LedgerEntry> seq,
+                                         Object ctx) {
+                    if (log.isDebugEnabled()) {
+                        log.debug("readComplete rc={} entryId={}", rc, lh.getLastAddConfirmed());
                     }
+                    if (isBkErrorNotRecoverable(rc)) {
+                        log.error("[{}] Error reading from metadata ledger {} for consumer {}: {}", ledger.getName(),
+                                ledgerId, name, BKException.getMessage(rc));
+                        // Rewind to oldest entry available
+                        initialize(getRollbackPosition(info), callback);
+                        return;
+                    } else if (rc != BKException.Code.OK) {
+                        log.warn("[{}] Error reading from metadata ledger {} for consumer {}: {}", ledger.getName(),
+                                ledgerId, name, BKException.getMessage(rc));
+
+                        callback.operationFailed(new ManagedLedgerException(BKException.getMessage(rc)));
+                        return;
+                    }
+
+                    LedgerEntry entry = seq.nextElement();
+                    PositionInfo positionInfo;
+                    try {
+                        positionInfo = PositionInfo.parseFrom(entry.getEntry());
+                    } catch (InvalidProtocolBufferException e) {
+                        callback.operationFailed(new ManagedLedgerException(e));
+                        return;
+                    }
+                    Map<String, Long> recoveredProperties = Collections.emptyMap();
+                    if (positionInfo.getPropertiesCount() > 0) {
+                        // Recover properties map
+                        recoveredProperties = Maps.newHashMap();
+                        for (int i = 0; i < positionInfo.getPropertiesCount(); i++) {
+                            MLDataFormats.LongProperty property = positionInfo.getProperties(i);
+                            recoveredProperties.put(property.getName(), property.getValue());
+                        }
+                    }
+                    DlogBasedPosition position = new DlogBasedPosition(positionInfo);
+                    if (positionInfo.getIndividualDeletedMessagesCount() > 0) {
+                        recoverIndividualDeletedMessages(positionInfo.getIndividualDeletedMessagesList());
+                    }
+                    recoveredCursor(position, recoveredProperties);
+                    callback.operationComplete();
                 }
-                DlogBasedPosition position = new DlogBasedPosition(positionInfo);
-                if (positionInfo.getIndividualDeletedMessagesCount() > 0) {
-                    recoverIndividualDeletedMessages(positionInfo.getIndividualDeletedMessagesList());
-                }
-                recoveredCursor(position, recoveredProperties);
-                callback.operationComplete();
-            }, null);
-        }, null);
+            };
+            // Read the last entry in the ledger
+            long lastEntryId = lh.getLastAddConfirmed();
+            if (lastEntryId < 0) {
+                // Ledger was empty, so there is no last entry to read
+                readCallback.readComplete(BKException.Code.NoSuchEntryException, lh, null, ctx);
+            } else {
+                lh.asyncReadEntries(lastEntryId,lastEntryId,readCallback,ctx);
+            }
+
+        },null);
     }
 
     private void recoverIndividualDeletedMessages(List<MLDataFormats.MessageRange> individualDeletedMessagesList) {
@@ -1848,68 +1859,72 @@ public class DlogBasedManagedCursor implements ManagedCursor {
 
     void createNewMetadataLedger(final VoidCallback callback) {
         ledger.mbean.startCursorLedgerCreateOp();
+
         bookkeeper.asyncCreateLedger(config.getMetadataEnsemblesize(), config.getMetadataWriteQuorumSize(),
-                config.getMetadataAckQuorumSize(), config.getDigestType(), config.getPassword(), (rc, lh, ctx) -> {
-                    ledger.getExecutor().submit(safeRun(() -> {
-                        ledger.mbean.endCursorLedgerCreateOp();
-                        if (rc != BKException.Code.OK) {
-                            log.warn("[{}] Error creating ledger for cursor {}: {}", ledger.getName(), name,
-                                    BKException.getMessage(rc));
-                            callback.operationFailed(new ManagedLedgerException(BKException.getMessage(rc)));
-                            return;
-                        }
+                config.getMetadataAckQuorumSize(), config.getDigestType(), config.getPassword(),new AsyncCallback.CreateCallback(){
+                    @Override
+                    public void createComplete(int rc, LedgerHandle lh, Object ctx){
+                        ledger.getExecutor().submit(safeRun(() -> {
+                            ledger.mbean.endCursorLedgerCreateOp();
+                            if (rc != BKException.Code.OK) {
+                                log.warn("[{}] Error creating ledger for cursor {}: {}", ledger.getName(), name,
+                                        BKException.getMessage(rc));
+                                callback.operationFailed(new ManagedLedgerException(BKException.getMessage(rc)));
+                                return;
+                            }
 
-                        if (log.isDebugEnabled()) {
-                            log.debug("[{}] Created ledger {} for cursor {}", ledger.getName(), lh.getId(), name);
-                        }
-                        // Created the ledger, now write the last position
-                        // content
-                        MarkDeleteEntry mdEntry = lastMarkDeleteEntry;
-                        persistPosition(lh, mdEntry, new VoidCallback() {
-                            @Override
-                            public void operationComplete() {
-                                if (log.isDebugEnabled()) {
-                                    log.debug("[{}] Persisted position {} for cursor {}", ledger.getName(),
-                                            mdEntry.newPosition, name);
+                            if (log.isDebugEnabled()) {
+                                log.debug("[{}] Created ledger {} for cursor {}", ledger.getName(), lh.getId(), name);
+                            }
+                            // Created the ledger, now write the last position
+                            // content
+                            MarkDeleteEntry mdEntry = lastMarkDeleteEntry;
+                            persistPosition(lh, mdEntry, new VoidCallback() {
+                                @Override
+                                public void operationComplete() {
+                                    if (log.isDebugEnabled()) {
+                                        log.debug("[{}] Persisted position {} for cursor {}", ledger.getName(),
+                                                mdEntry.newPosition, name);
+                                    }
+                                    switchToNewLedger(lh, new VoidCallback() {
+                                        @Override
+                                        public void operationComplete() {
+                                            callback.operationComplete();
+                                        }
+
+                                        @Override
+                                        public void operationFailed(ManagedLedgerException exception) {
+                                            // it means it failed to switch the newly created ledger so, it should be
+                                            // deleted to prevent leak
+                                            bookkeeper.asyncDeleteLedger(lh.getId(), (int rc, Object ctx) -> {
+                                                if (rc != BKException.Code.OK) {
+                                                    log.warn("[{}] Failed to delete orphan ledger {}", ledger.getName(),
+                                                            lh.getId());
+                                                }
+                                            }, null);
+                                            callback.operationFailed(exception);
+                                        }
+                                    });
                                 }
-                                switchToNewLedger(lh, new VoidCallback() {
-                                    @Override
-                                    public void operationComplete() {
-                                        callback.operationComplete();
-                                    }
 
-                                    @Override
-                                    public void operationFailed(ManagedLedgerException exception) {
-                                        // it means it failed to switch the newly created ledger so, it should be
-                                        // deleted to prevent leak
-                                        bookkeeper.asyncDeleteLedger(lh.getId(), (int rc, Object ctx) -> {
-                                            if (rc != BKException.Code.OK) {
-                                                log.warn("[{}] Failed to delete orphan ledger {}", ledger.getName(),
-                                                        lh.getId());
-                                            }
-                                        }, null);
-                                        callback.operationFailed(exception);
-                                    }
-                                });
-                            }
+                                @Override
+                                public void operationFailed(ManagedLedgerException exception) {
+                                    log.warn("[{}] Failed to persist position {} for cursor {}", ledger.getName(),
+                                            mdEntry.newPosition, name);
 
-                            @Override
-                            public void operationFailed(ManagedLedgerException exception) {
-                                log.warn("[{}] Failed to persist position {} for cursor {}", ledger.getName(),
-                                        mdEntry.newPosition, name);
-
-                                ledger.mbean.startCursorLedgerDeleteOp();
-                                bookkeeper.asyncDeleteLedger(lh.getId(), new DeleteCallback() {
-                                    @Override
-                                    public void deleteComplete(int rc, Object ctx) {
-                                        ledger.mbean.endCursorLedgerDeleteOp();
-                                    }
-                                }, null);
-                                callback.operationFailed(exception);
-                            }
-                        });
-                    }));
-                }, null);
+                                    ledger.mbean.startCursorLedgerDeleteOp();
+                                    bookkeeper.asyncDeleteLedger(lh.getId(), new AsyncCallback.DeleteCallback() {
+                                        @Override
+                                        public void deleteComplete(int rc, Object ctx) {
+                                            ledger.mbean.endCursorLedgerDeleteOp();
+                                        }
+                                    }, null);
+                                    callback.operationFailed(exception);
+                                }
+                            });
+                        }));
+                    }
+                }, null,(Map)null);
     }
     private List<MLDataFormats.LongProperty> buildPropertiesMap(Map<String, Long> properties) {
         if (properties.isEmpty()) {
@@ -2069,7 +2084,7 @@ public class DlogBasedManagedCursor implements ManagedCursor {
         LedgerHandle lh = cursorLedger;
         ledger.mbean.startCursorLedgerCloseOp();
         log.info("[{}] [{}] Closing metadata ledger {}", ledger.getName(), name, lh.getId());
-        lh.asyncClose(new CloseCallback() {
+        lh.asyncClose(new AsyncCallback.CloseCallback() {
             @Override
             public void closeComplete(int rc, LedgerHandle lh, Object ctx) {
                 ledger.mbean.endCursorLedgerCloseOp();

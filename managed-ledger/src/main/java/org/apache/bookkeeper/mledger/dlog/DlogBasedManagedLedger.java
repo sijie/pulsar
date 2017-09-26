@@ -1,17 +1,22 @@
 package org.apache.bookkeeper.mledger.dlog;
 import com.google.common.collect.*;
 import com.google.common.util.concurrent.RateLimiter;
+import dlshade.org.apache.bookkeeper.client.BookKeeper;
 import dlshade.org.apache.bookkeeper.client.BookKeeperAccessor;
 import dlshade.org.apache.bookkeeper.client.LedgerHandle;
 import dlshade.org.apache.bookkeeper.stats.StatsLogger;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-import org.apache.bookkeeper.client.BookKeeper;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.*;
-import org.apache.bookkeeper.mledger.*;
+import org.apache.bookkeeper.mledger.Entry;
+import org.apache.bookkeeper.mledger.ManagedCursor;
+import org.apache.bookkeeper.mledger.ManagedLedger;
+import org.apache.bookkeeper.mledger.ManagedLedgerException;
 import org.apache.bookkeeper.mledger.ManagedLedgerException.ManagedLedgerFencedException;
 import org.apache.bookkeeper.mledger.ManagedLedgerException.ManagedLedgerTerminatedException;
 import org.apache.bookkeeper.mledger.ManagedLedgerException.MetaStoreException;
+import org.apache.bookkeeper.mledger.ManagedLedgerMXBean;
+import org.apache.bookkeeper.mledger.Position;
 import org.apache.bookkeeper.mledger.dlog.DlogBasedManagedCursor.VoidCallback;
 import org.apache.bookkeeper.mledger.impl.MetaStore;
 import org.apache.bookkeeper.mledger.impl.MetaStore.MetaStoreCallback;
@@ -38,9 +43,7 @@ import org.apache.distributedlog.common.concurrent.FutureEventListener;
 import org.apache.distributedlog.config.DynamicDistributedLogConfiguration;
 import org.apache.distributedlog.exceptions.LogEmptyException;
 import org.apache.distributedlog.impl.BKNamespaceDriver;
-import org.apache.distributedlog.impl.logsegment.BKUtils;
 import org.apache.distributedlog.namespace.NamespaceDriver;
-import org.apache.distributedlog.tools.DistributedLogTool;
 import org.apache.pulsar.common.api.Commands;
 import org.apache.pulsar.common.api.proto.PulsarApi.MessageMetadata;
 import org.slf4j.Logger;
@@ -69,7 +72,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
     private final String name;
     private final BookKeeper bookKeeper;
 
-    private final ManagedLedgerConfig config;
+    private final DlogBasedManagedLedgerConfig config;
     private final MetaStore store;
 
     // ledger here is dlog log segment
@@ -166,7 +169,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
     private final DistributedLogConfiguration dlConfig;
 
     public DlogBasedManagedLedger(DlogBasedManagedLedgerFactory factory, BookKeeper bookKeeper, Namespace namespace, DistributedLogConfiguration dlConfig,
-                                  ManagedLedgerConfig config, MetaStore store, ScheduledExecutorService scheduledExecutor, OrderedSafeExecutor orderedExecutor,
+                                  DlogBasedManagedLedgerConfig config, MetaStore store, ScheduledExecutorService scheduledExecutor, OrderedSafeExecutor orderedExecutor,
                                   final String name) {
         this.factory = factory;
         this.config = config;
@@ -1868,7 +1871,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
         return store;
     }
 
-    ManagedLedgerConfig getConfig() {
+    DlogBasedManagedLedgerConfig getConfig() {
         return config;
     }
 
