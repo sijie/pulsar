@@ -49,7 +49,7 @@ public class DlogBasedPosition implements Position, Comparable<DlogBasedPosition
     public DLSN getDlsn(){return dlsn;}
     @Override
     public DlogBasedPosition getNext() {
-        return new DlogBasedPosition(new DLSN(this.dlsn.getLogSegmentSequenceNo(), this.dlsn.getEntryId(),0));
+        return new DlogBasedPosition(new DLSN(this.dlsn.getLogSegmentSequenceNo(), this.dlsn.getEntryId() + 1,0));
     }
 
     public long getLedgerId(){
