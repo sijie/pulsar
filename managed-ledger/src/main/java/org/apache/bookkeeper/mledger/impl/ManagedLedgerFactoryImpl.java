@@ -170,7 +170,7 @@ public class ManagedLedgerFactoryImpl implements ManagedLedgerFactory {
 
     @Override
     public ManagedLedger open(String name) throws InterruptedException, ManagedLedgerException {
-        return open(name, new ManagedLedgerConfig());
+        return open(name, new ManagedLedgerConfigImpl());
     }
 
     @Override
@@ -206,7 +206,7 @@ public class ManagedLedgerFactoryImpl implements ManagedLedgerFactory {
 
     @Override
     public void asyncOpen(String name, OpenLedgerCallback callback, Object ctx) {
-        asyncOpen(name, new ManagedLedgerConfig(), callback, ctx);
+        asyncOpen(name, new ManagedLedgerConfigImpl(), callback, ctx);
     }
 
     @Override

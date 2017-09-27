@@ -220,7 +220,7 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
 
     @Override
     public ManagedLedger open(String name) throws InterruptedException, ManagedLedgerException {
-        return open(name, new ManagedLedgerConfig());
+        return open(name, new DlogBasedManagedLedgerConfig());
     }
 
     @Override

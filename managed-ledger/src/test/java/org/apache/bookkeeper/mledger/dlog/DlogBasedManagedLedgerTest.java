@@ -18,6 +18,7 @@
  */
 package org.apache.bookkeeper.mledger.dlog;
 
+import static com.google.common.base.Preconditions.checkArgument;
 import com.google.common.base.Charsets;
 import com.google.common.collect.Sets;
 import dlshade.org.apache.bookkeeper.client.BookKeeper;
@@ -175,7 +176,7 @@ public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
 //            zkc.delete("/ledgers/LAYOUT",zkc.exists("/ledgers/LAYOUT",false).getVersion());
 //        zkc.create("/ledgers/LAYOUT", "1\nflat:1".getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
 
-        bkc = BookKeeper.forConfig(new ClientConfiguration()).build();
+        bkc = BookKeeper.forConfig(new ClientConfiguration().setClientConnectTimeoutMillis(20000)).setZookeeper(zkc).build();
     }
 
 

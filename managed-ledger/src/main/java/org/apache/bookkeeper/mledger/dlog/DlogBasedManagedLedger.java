@@ -1,13 +1,21 @@
 package org.apache.bookkeeper.mledger.dlog;
-import com.google.common.collect.*;
+import com.google.common.collect.BoundType;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Queues;
+import com.google.common.collect.Range;
 import com.google.common.util.concurrent.RateLimiter;
 import dlshade.org.apache.bookkeeper.client.BookKeeper;
-import dlshade.org.apache.bookkeeper.client.BookKeeperAccessor;
 import dlshade.org.apache.bookkeeper.client.LedgerHandle;
-import dlshade.org.apache.bookkeeper.stats.StatsLogger;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-import org.apache.bookkeeper.mledger.AsyncCallbacks.*;
+import org.apache.bookkeeper.mledger.AsyncCallbacks.AddEntryCallback;
+import org.apache.bookkeeper.mledger.AsyncCallbacks.CloseCallback;
+import org.apache.bookkeeper.mledger.AsyncCallbacks.DeleteCursorCallback;
+import org.apache.bookkeeper.mledger.AsyncCallbacks.DeleteLedgerCallback;
+import org.apache.bookkeeper.mledger.AsyncCallbacks.OpenCursorCallback;
+import org.apache.bookkeeper.mledger.AsyncCallbacks.ReadEntryCallback;
+import org.apache.bookkeeper.mledger.AsyncCallbacks.TerminateCallback;
 import org.apache.bookkeeper.mledger.Entry;
 import org.apache.bookkeeper.mledger.ManagedCursor;
 import org.apache.bookkeeper.mledger.ManagedLedger;
@@ -30,7 +38,6 @@ import org.apache.bookkeeper.mledger.util.Pair;
 import org.apache.bookkeeper.util.OrderedSafeExecutor;
 import org.apache.bookkeeper.util.UnboundArrayBlockingQueue;
 import org.apache.distributedlog.BookKeeperClient;
-import org.apache.distributedlog.DLSN;
 import org.apache.distributedlog.DistributedLogConfiguration;
 import org.apache.distributedlog.LogSegmentMetadata;
 import org.apache.distributedlog.api.AsyncLogReader;
@@ -40,7 +47,6 @@ import org.apache.distributedlog.api.LogReader;
 import org.apache.distributedlog.api.namespace.Namespace;
 import org.apache.distributedlog.callback.LogSegmentListener;
 import org.apache.distributedlog.common.concurrent.FutureEventListener;
-import org.apache.distributedlog.config.DynamicDistributedLogConfiguration;
 import org.apache.distributedlog.exceptions.LogEmptyException;
 import org.apache.distributedlog.impl.BKNamespaceDriver;
 import org.apache.distributedlog.namespace.NamespaceDriver;
@@ -50,8 +56,19 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.NavigableMap;
+import java.util.Optional;
+import java.util.Queue;
+import java.util.Random;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.concurrent.atomic.AtomicReference;
@@ -63,7 +80,6 @@ import static java.lang.Math.min;
 import static org.apache.bookkeeper.mledger.util.SafeRun.safeRun;
 
 public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener<AsyncLogWriter>,LogSegmentListener {
-    private final static long MegaByte = 1024 * 1024;
 
     protected final static int AsyncOperationTimeoutSeconds = 30;
     private final static long maxActiveCursorBacklogEntries = 100;
@@ -75,7 +91,8 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
     private final DlogBasedManagedLedgerConfig config;
     private final MetaStore store;
 
-    // ledger here is dlog log segment
+    // ledger here is dlog log segment,
+    // so the key is log segment sequence number, which is not equal to bk ledgerId
     private final NavigableMap<Long, LedgerInfo> ledgers = new ConcurrentSkipListMap<>();
     private volatile Stat ledgersStat;
 
@@ -118,11 +135,9 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
     private long currentLedgerSize = 0;
     private long lastLedgerCreatedTimestamp = 0;
     private long lastLedgerCreationFailureTimestamp = -1;
-    private long lastLedgerCreationInitiationTimestamp = 0;
-
-    private static final Random random = new Random(System.currentTimeMillis());
 
     // Time period in which new write requests will not be accepted, after we fail in creating a new ledger.
+    // todo use it when queue write op
     final static long WaitTimeAfterLedgerCreationFailureMs = 10000;
 
     volatile DlogBasedPosition lastConfirmedEntry;
@@ -137,7 +152,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
         Fenced, // A managed ledger is fenced when there is some concurrent
         // access from a different session/machine. In this state the
         // managed ledger will throw exception for all operations, since
-        // the new instance will take over
+        // the new instance will take over, the fencing mechanism is like bk.
         Terminated, // Managed ledger was terminated and no more entries
         // are allowed to be added. Reads are allowed
     }
@@ -153,7 +168,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
 
     private final ScheduledExecutorService scheduledExecutor;
     private final OrderedSafeExecutor executor;
-    final DlogBasedManagedLedgerFactory factory;
+    private final DlogBasedManagedLedgerFactory factory;
     protected final DlogBasedManagedLedgerMBean mbean;
 
     /**
@@ -192,8 +207,6 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
         this.uninitializedCursors = Maps.newHashMap();
         this.updateCursorRateLimit = RateLimiter.create(1);
 
-
-
     }
 
 
@@ -222,7 +235,6 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
                 }
 
                 initializeLogWriter(callback);
-                // we don't need to store ledgerInfo in metaStore, just get from dlog
             }
 
             @Override
@@ -239,9 +251,6 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
      *
      */
     private synchronized void updateLedgers(){
-        if (log.isDebugEnabled()) {
-            log.debug("[{}] updateLedgers ", name);
-        }
         int originalSize = ledgers.size();
         // Fetch the list of existing ledgers in the managed ledger
         List<LogSegmentMetadata> logSegmentMetadatas = null;
@@ -256,11 +265,18 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
         NamespaceDriver driver = dlNamespace.getNamespaceDriver();
         assert(driver instanceof BKNamespaceDriver);
         BookKeeperClient bkc = ((BKNamespaceDriver) driver).getReaderBKC();
-
+        long max = 0L;
 
         if(logSegmentMetadatas != null){
             LedgerHandle lh = null;
+            if (log.isDebugEnabled()) {
+                log.debug("[{}] logSegmentMetadatas's size is {} ", name, logSegmentMetadatas.size());
+            }
             for(LogSegmentMetadata logSegment: logSegmentMetadatas){
+
+                long logSegmentSequenceNumber = logSegment.getLogSegmentSequenceNumber();
+                if(logSegmentSequenceNumber > max)
+                    max = logSegmentSequenceNumber;
 
                 LedgerInfo info = null;
 
@@ -277,8 +293,11 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
                     log.error("[{}] get bk client failed in updateLedgers", name, e);
                 }
 
-                ledgers.put(logSegment.getLogSegmentId(), info);
+                ledgers.put(logSegment.getLogSegmentSequenceNumber(), info);
             }
+
+            //update currentLedgerId
+            currentLedger = max;
 
             // Calculate total entries and size
             NUMBER_OF_ENTRIES_UPDATER.set(DlogBasedManagedLedger.this,0);
@@ -294,9 +313,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
             if (log.isDebugEnabled()) {
                 log.debug("[{}] befor updateLedgers, ledger size is {}, after it's {} ", name, originalSize,ledgers.size());
             }
-
         }
-
 
     }
     /**
@@ -305,7 +322,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
      */
     private synchronized void initializeLogWriter(final ManagedLedgerInitializeLedgerCallback callback) {
         if (log.isDebugEnabled()) {
-            log.debug("[{}] initializing log writer; ledgers {}", name, ledgers);
+            log.debug("[{}] initializing log writer.", name);
         }
 
         if (state == State.Terminated) {
@@ -316,8 +333,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
             return;
         }
 
-        // Open a new log writer to art writing
-        this.lastLedgerCreationInitiationTimestamp = System.nanoTime();
+        // Open a new log writer to response writing
         mbean.startDataLedgerCreateOp();
         dlm.openAsyncLogWriter().whenComplete(new FutureEventListener<AsyncLogWriter>() {
             @Override
@@ -326,27 +342,21 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
                 mbean.endDataLedgerCreateOp();
                 log.info("[{}] Created log writer {}", name, asyncLogWriter.toString());
                 lastLedgerCreatedTimestamp = System.currentTimeMillis();
+                updateLedgers();
                 try{
                     lastConfirmedEntry = new DlogBasedPosition(dlm.getLastDLSN());
-
                 }catch (LogEmptyException lee){
 
-                // the first time open a new ledger, get the ledger Id
-//                    updateCurrentLedgerId();
-                    // todo the update has no effect
-                    updateLedgers();
-
+                    // the stream has no entry, reset the lastConfirmedEntry
+                    // todo is the first ledgerId always 0, updateLedgers set it to 0 in default
                     lastConfirmedEntry = new DlogBasedPosition(currentLedger,-1,0);
-
-                    log.info("the log stream is empty {}, current ledger is {}",lee.toString(),currentLedger);
+                    log.info("the log stream is empty {}, current lce is {}",lee.toString(),lastConfirmedEntry);
                 }
                 catch (IOException e){
-                    log.error("Failed get  LastLogRecord in initializing",e);
+                    log.error("Failed getLastDLSN in initializing log stream",e);
                 }
                 STATE_UPDATER.set(DlogBasedManagedLedger.this, State.WriterOpened);
                 initializeCursors(callback);
-
-
             }
 
             @Override
@@ -359,29 +369,6 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
 
     }
 
-    /*
-    **updateCurrentLedgerId, usually after open writer.
-    * current active ledger Id is the max one.
-     */
-    private void updateCurrentLedgerId(){
-
-        try{
-            List<LogSegmentMetadata> segments = dlm.getLogSegments();
-            long max = 0L;
-            for (LogSegmentMetadata segment : segments) {
-                long sid = segment.getLogSegmentId();
-                if(sid > max)
-                    max = sid;
-            }
-            currentLedger = max;
-        }catch(IOException ioe){
-                log.error("[{}] Failed getLogSegments  for exception: ",name,ioe);
-            }
-        if (log.isDebugEnabled()) {
-            log.debug("[{}] after updateCurrentLedgerId, current is {}", name,currentLedger);
-        }
-
-    }
     private void initializeCursors(final ManagedLedgerInitializeLedgerCallback callback) {
         if (log.isDebugEnabled()) {
             log.debug("[{}] initializing cursors", name);
@@ -524,7 +511,6 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
 
         checkArgument(state == State.WriterOpened);
 
-
         ++currentLedgerEntries;
         currentLedgerSize += buffer.readableBytes();
 
@@ -532,9 +518,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
             log.debug("[{}] Write into current stream={} entries={}", name, asyncLogWriter.getStreamName(),
                     currentLedgerEntries);
         }
-
         addOperation.initiate();
-
     }
 
     @Override
@@ -1132,26 +1116,14 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
 
     }
 
-    //dlm metadata change callback
+    //dlm metadata change callback, updateLedgers when metadata change.
     @Override
     public void onSegmentsUpdated(List<LogSegmentMetadata> segments) {
-        // update current ledger and create time
-        Iterator<LogSegmentMetadata> iterator = segments.iterator();
-        while (iterator.hasNext()){
-            long segId = iterator.next().getLogSegmentId();
-           if(segId > currentLedger){
-               currentLedger = segId;
-               lastLedgerCreatedTimestamp = System.currentTimeMillis();
-           }
 
-        }
+        lastLedgerCreatedTimestamp = System.currentTimeMillis();
+        updateLedgers();
         if (log.isDebugEnabled()) {
-            try{
-                log.debug("[{}] onSegmentsUpdated LogSegmentsMeta is {} ", name, dlm.getLogSegments());
-
-            }catch (Exception e){
-                log.debug("[{}]  {} ", name, e.toString());
-            }
+            log.debug("[{}] dlog segment metadata update ", name);
         }
     }
 
@@ -1310,6 +1282,9 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
     }
 
     DlogBasedPosition startReadOperationOnLedger(DlogBasedPosition position) {
+        if (log.isDebugEnabled()) {
+            log.debug("[{}] original position is {} and ledgers is {} in startReadOperationOnLedger", name, position, ledgers);
+        }
         long ledgerId = ledgers.ceilingKey(position.getLedgerId());
         if (ledgerId != position.getLedgerId()) {
             // The ledger pointed by this position does not exist anymore. It was deleted because it was empty. We need
