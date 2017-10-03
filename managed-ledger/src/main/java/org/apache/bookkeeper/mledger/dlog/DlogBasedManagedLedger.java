@@ -311,7 +311,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
                 }
             }
             if (log.isDebugEnabled()) {
-                log.debug("[{}] befor updateLedgers, ledger size is {}, after it's {} ", name, originalSize,ledgers.size());
+                log.debug("[{}] before updateLedgers, ledger size is {}, after it's {} ", name, originalSize,ledgers.size());
             }
         }
 
@@ -353,7 +353,9 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
                     log.info("the log stream is empty {}, current lce is {}",lee.toString(),lastConfirmedEntry);
                 }
                 catch (IOException e){
-                    log.error("Failed getLastDLSN in initializing log stream",e);
+                    log.error("Failed getLastDLSN in getLastDLSN",e);
+                }catch(Exception e){
+                    log.error("Faced Exception in getLastDLSN",e);
                 }
                 STATE_UPDATER.set(DlogBasedManagedLedger.this, State.WriterOpened);
                 initializeCursors(callback);
@@ -1214,6 +1216,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
                 log.debug("[{}] No more messages to read from lastEntry={} readEntry={}", name,
                         lastEntryInLedger, firstEntry);
             }
+            dlogBasedOpReadEntry.checkReadCompletion();
             return;
         }
 

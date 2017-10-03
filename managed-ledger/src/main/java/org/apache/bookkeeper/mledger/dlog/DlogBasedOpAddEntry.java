@@ -60,7 +60,7 @@ class DlogBasedOpAddEntry extends SafeRunnable implements FutureEventListener<DL
     public void initiate() {
         ByteBuf duplicateBuffer = RecyclableDuplicateByteBuf.create(data);
         // duplicatedBuffer has refCnt=1 at this point
-
+//        asyncLogWriter.write()
         asyncLogWriter.write(new LogRecord(System.currentTimeMillis(),duplicateBuffer.array())).whenComplete(this);
 //      logRecord constructor is protected still.
 //    asyncLogWriter.write(new LogRecord(System.currentTimeMillis(),duplicateBuffer)).whenComplete(this);
