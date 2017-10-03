@@ -382,12 +382,18 @@ public class DlogBasedManagedCursor implements ManagedCursor {
         asyncReadEntries(numberOfEntriesToRead, new ReadEntriesCallback() {
             @Override
             public void readEntriesComplete(List<Entry> entries, Object ctx) {
+                if (log.isDebugEnabled()) {
+                    log.debug("[{}] [{}] read-complete: entry size={}", this, ledger.getName(), entries.size());
+                }
                 result.entries = entries;
                 counter.countDown();
             }
 
             @Override
             public void readEntriesFailed(ManagedLedgerException exception, Object ctx) {
+                if (log.isDebugEnabled()) {
+                    log.debug("[{}] [{}] read-fail:{}", this, ledger.getName(), exception);
+                }
                 result.exception = exception;
                 counter.countDown();
             }
@@ -438,6 +444,7 @@ public class DlogBasedManagedCursor implements ManagedCursor {
 
             @Override
             public void readEntryComplete(Entry entry, Object ctx) {
+
                 result.entry = entry;
                 counter.countDown();
             }
@@ -1030,7 +1037,9 @@ public class DlogBasedManagedCursor implements ManagedCursor {
 
         final Result result = new Result();
         final CountDownLatch counter = new CountDownLatch(1);
-
+        if (log.isDebugEnabled()) {
+            log.debug("[{}] come to MarkDele, position is {}, cursor is {}", ledger.getName(), position, name);
+        }
         asyncMarkDelete(position, properties, new MarkDeleteCallback() {
             @Override
             public void markDeleteComplete(Object ctx) {
