@@ -1783,7 +1783,7 @@ public class DlogBasedManagedCursor implements ManagedCursor {
                         // At this point the position had already been safely stored in the cursor z-node
                         callback.closeComplete(ctx);
 
-                asyncDeleteLedger(cursorLedger);
+//                asyncDeleteLedger(cursorLedger);
             }
 
                     @Override
