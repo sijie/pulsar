@@ -190,7 +190,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
         this.config = config;
         this.bookKeeper = bookKeeper;
         this.store = store;
-        this.name = name;
+        this.name = name.replaceAll("\\/","-");
         this.scheduledExecutor = scheduledExecutor;
         this.executor = orderedExecutor;
         this.dlNamespace = namespace;
@@ -212,7 +212,6 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
 
     synchronized void initialize(final ManagedLedgerInitializeLedgerCallback callback, final Object ctx)  throws IOException{
         log.info("Opening managed ledger {}", name);
-
         //todo is this check necessary, statsLogger now is empty
         if(dlNamespace.logExists(name))
         {
@@ -344,7 +343,9 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
                 lastLedgerCreatedTimestamp = System.currentTimeMillis();
                 updateLedgers();
                 try{
+                    log.info("before getLastDLSN");
                     lastConfirmedEntry = new DlogBasedPosition(dlm.getLastDLSN());
+                    log.info("after getLastDLSN");
                 }catch (LogEmptyException lee){
 
                     // the stream has no entry, reset the lastConfirmedEntry
@@ -1202,12 +1203,12 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
 
 
     }
-
     private void internalRead(DlogBasedOpReadEntry dlogBasedOpReadEntry) {
 
         // Perform the read
         long firstEntry = dlogBasedOpReadEntry.readPosition.getEntryId();
         long lastEntryInLedger = lastConfirmedEntry.getEntryId();
+        long ledgerId = dlogBasedOpReadEntry.readPosition.getLedgerId();
         final DlogBasedManagedCursor cursor = dlogBasedOpReadEntry.cursor;
 
 
@@ -1227,6 +1228,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
 
             logReader = dlm.getAsyncLogReader(dlogBasedOpReadEntry.readPosition.getDlsn());
 
+
         }catch (IOException e){
             log.error("[{}] Opening log reader in asyncReadEntry fail {}", name,e);
 
@@ -1241,7 +1243,8 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
 
             if (updateCursorRateLimit.tryAcquire()) {
                 if (isCursorActive(cursor)) {
-                    final DlogBasedPosition lastReadPosition = DlogBasedPosition.get(dlogBasedOpReadEntry.readPosition.getLedgerId(), lastEntry);
+//                    log.debug("[{}] dlogBasedOpReadEntry.readPosition == null: {}", name, dlogBasedOpReadEntry.readPosition == null);
+                    final DlogBasedPosition lastReadPosition = DlogBasedPosition.get(ledgerId, lastEntry);
                     discardEntriesFromCache(cursor, lastReadPosition);
                 }
             }
@@ -1475,10 +1478,10 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
         }
         try{
             dlm.delete();
-
-        }catch (IOException e){
+        }catch (Exception e){
             callback.deleteLedgerFailed(new ManagedLedgerException(e), ctx);
             log.error("[{}] Deleting dlog stream :{} fail", name, dlm.getStreamName(), e);
+            return;
         }
         deleteMetadata(callback, ctx);
 

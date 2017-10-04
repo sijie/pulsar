@@ -283,6 +283,7 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
         //to change dlog config when ml config change,such as rollover time
         DistributedLogConfiguration distributedLogConfiguration = new DistributedLogConfiguration();
         distributedLogConfiguration.setLogSegmentRollingIntervalMinutes((int) config.getMaximumRolloverTimeMs() / 60000);
+        distributedLogConfiguration.setMaxLogSegmentBytes(config.getMaxSizePerLedgerMb() * 1024 * 1024);
 
         // Ensure only one managed ledger is created and initialized
         ledgers.computeIfAbsent(name, (mlName) -> {

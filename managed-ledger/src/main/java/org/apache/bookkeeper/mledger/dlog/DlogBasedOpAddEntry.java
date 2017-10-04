@@ -95,13 +95,12 @@ class DlogBasedOpAddEntry extends SafeRunnable implements FutureEventListener<DL
             DlogBasedEntry entry = DlogBasedEntry.create(dlsn, data);
             // EntryCache.insert: duplicates entry by allocating new entry and data. so, recycle entry after calling
             // insert
-//            ml.entryCache.insert(entry);
+            ml.entryCache.insert(entry);
             entry.release();
         }
 
         // We are done using the byte buffer
         data.release();
-
         DlogBasedPosition lastEntry = DlogBasedPosition.get(dlsn);
         DlogBasedManagedLedger.ENTRIES_ADDED_COUNTER_UPDATER.incrementAndGet(ml);
         ml.lastConfirmedEntry = lastEntry;
@@ -162,7 +161,12 @@ class DlogBasedOpAddEntry extends SafeRunnable implements FutureEventListener<DL
             log.debug("[{}] [{}] write fail: dlsn={} size={}", this, ml.getName(),
                     dlsn, dataLength);
         }
-        ml.dealAddFailure();
-        ml.mbean.recordAddEntryError();
+        AddEntryCallback cb = callbackUpdater.getAndSet(this, null);
+        if (cb != null) {
+            cb.addFailed(new ManagedLedgerException(throwable), ctx);
+            ml.mbean.recordAddEntryError();
+        }
+        // when to deal failure(start new log writer)
+//        ml.dealAddFailure();
     }
 }
