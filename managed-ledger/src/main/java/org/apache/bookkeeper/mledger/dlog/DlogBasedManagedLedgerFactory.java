@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit;
 
 import dlshade.org.apache.bookkeeper.client.BKException;
 import dlshade.org.apache.bookkeeper.client.BookKeeper;
+import dlshade.org.apache.bookkeeper.conf.ClientConfiguration;
 import org.apache.bookkeeper.mledger.AsyncCallbacks;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.ManagedLedgerInfoCallback;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.OpenLedgerCallback;
@@ -84,12 +85,60 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
     private final ScheduledFuture<?> statsTask;
     private static final int StatsPeriodSeconds = 60;
 
-    // used in test, todo  delete it
-    public DlogBasedManagedLedgerFactory(BookKeeper bookKeeper, ZooKeeper zooKeeper) throws Exception {
-              this(bookKeeper, "127.0.0.1:2181", new ManagedLedgerFactoryConfig());
-    }
     //todo make sure dlog log stream using steps correctly:1. bind namespace 2.create log stream
 
+    public DlogBasedManagedLedgerFactory(String zkServers, ManagedLedgerFactoryConfig mlconfig)
+            throws Exception {
+        this.dlconfig = new DistributedLogConfiguration();
+        this.isBookkeeperManaged = false;
+        this.mlconfig = mlconfig;
+
+        final CountDownLatch counter = new CountDownLatch(1);
+        final String zookeeperQuorum = checkNotNull(zkServers);
+        //just use dlzkSessionTimeout
+        zookeeper = new ZooKeeper(zookeeperQuorum, dlconfig.getZKSessionTimeoutMilliseconds(), event -> {
+            if (event.getState().equals(Watcher.Event.KeeperState.SyncConnected)) {
+                log.info("Connected to zookeeper");
+                counter.countDown();
+            } else {
+                log.error("Error connecting to zookeeper {}", event);
+            }
+        });
+
+        if (!counter.await(dlconfig.getZKSessionTimeoutMilliseconds(), TimeUnit.MILLISECONDS)
+                || zookeeper.getState() != States.CONNECTED) {
+            throw new ManagedLedgerException("Error connecting to ZooKeeper at '" + zookeeperQuorum + "'");
+        }
+        this.bookKeeper = BookKeeper.forConfig(new ClientConfiguration().setClientConnectTimeoutMillis(20000)).setZookeeper(zookeeper).build();
+        this.metaStore = new DlogBasedMetaStoreImplZookeeper(zookeeper, orderedExecutor);
+        this.mbean = new DlogBasedManagedLedgerFactoryMBean(this);
+        this.entryCacheManager = new DlogBasedEntryCacheManager(this);
+        this.statsTask = executor.scheduleAtFixedRate(() -> refreshStats(), 0, StatsPeriodSeconds, TimeUnit.SECONDS);
+        this.zkServers = zkServers;
+
+//        String dlUri = "Distributedlog://" + zookeeper.toString() + "/" + "persistent://test-property/cl1/ns1";
+        final String uri = "distributedlog://" + zkServers + "/" + defaultNS;
+
+
+        //todo first bind dl namespace if it doesn't exist
+
+
+        //initialize dl namespace
+        //set dlog transmit outputBuffer size to 0, entry will have only one record.
+        dlconfig.setOutputBufferSize(0);
+        try{
+            dlNamespace = NamespaceBuilder.newBuilder()
+                    .conf(dlconfig)
+                    .uri(new URI(uri))
+                    .build();
+
+        }catch (Exception e){
+            log.error("[{}] Got exception while trying to initialize dlog namespace, uri is {}", uri, e);
+            throw new ManagedLedgerException("Error initialize dlog namespace '" + e.getMessage());
+        }
+
+
+    }
     public DlogBasedManagedLedgerFactory(BookKeeper bookKeeper, String zkServers, ManagedLedgerFactoryConfig mlconfig)
             throws Exception {
         this.dlconfig = new DistributedLogConfiguration();
@@ -282,9 +331,11 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
 
         //to change dlog config when ml config change,such as rollover time
         DistributedLogConfiguration distributedLogConfiguration = new DistributedLogConfiguration();
+        long maxRollover = config.getMaximumRolloverTimeMs();
+        long minRollover = config.getMinimumRolloverTimeMs();
         distributedLogConfiguration.setLogSegmentRollingIntervalMinutes((int) config.getMaximumRolloverTimeMs() / 60000);
         distributedLogConfiguration.setMaxLogSegmentBytes(config.getMaxSizePerLedgerMb() * 1024 * 1024);
-
+        distributedLogConfiguration.setRetentionPeriodHours((int) config.getRetentionTimeMillis() / (1000 * 3600));
         // Ensure only one managed ledger is created and initialized
         ledgers.computeIfAbsent(name, (mlName) -> {
             // Create the managed ledger

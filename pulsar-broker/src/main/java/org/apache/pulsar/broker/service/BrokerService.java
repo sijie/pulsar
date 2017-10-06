@@ -55,6 +55,7 @@ import org.apache.bookkeeper.mledger.ManagedLedger;
 import org.apache.bookkeeper.mledger.ManagedLedgerConfig;
 import org.apache.bookkeeper.mledger.ManagedLedgerException;
 import org.apache.bookkeeper.mledger.ManagedLedgerFactory;
+import org.apache.bookkeeper.mledger.impl.ManagedLedgerConfigImpl;
 import org.apache.bookkeeper.util.OrderedSafeExecutor;
 import org.apache.bookkeeper.util.ZkUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
@@ -661,7 +662,7 @@ public class BrokerService implements Closeable, ZooKeeperCacheListener<Policies
                         serviceConfig.getDefaultRetentionSizeInMB());
             }
 
-            ManagedLedgerConfig managedLedgerConfig = new ManagedLedgerConfig();
+            ManagedLedgerConfigImpl managedLedgerConfig = new ManagedLedgerConfigImpl();
             managedLedgerConfig.setEnsembleSize(persistencePolicies.getBookkeeperEnsemble());
             managedLedgerConfig.setWriteQuorumSize(persistencePolicies.getBookkeeperWriteQuorum());
             managedLedgerConfig.setAckQuorumSize(persistencePolicies.getBookkeeperAckQuorum());

@@ -5,6 +5,7 @@ import io.netty.buffer.RecyclableDuplicateByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.util.AbstractReferenceCounted;
 import io.netty.util.Recycler;
+import io.netty.util.ReferenceCounted;
 import org.apache.bookkeeper.mledger.Entry;
 import org.apache.bookkeeper.mledger.Position;
 import org.apache.distributedlog.DLSN;
@@ -131,5 +132,10 @@ final class DlogBasedEntry extends AbstractReferenceCounted implements Entry, Co
     @Override
     public long getEntryId() {
         return 0;
+    }
+
+    @Override
+    public ReferenceCounted touch(Object o) {
+        return null;
     }
 }

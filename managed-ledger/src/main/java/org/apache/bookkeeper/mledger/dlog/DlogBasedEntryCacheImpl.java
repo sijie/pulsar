@@ -36,13 +36,16 @@ import org.apache.bookkeeper.mledger.util.RangeCache.Weighter;
 import org.apache.distributedlog.DLSN;
 import org.apache.distributedlog.LogRecordWithDLSN;
 import org.apache.distributedlog.api.AsyncLogReader;
+import org.apache.distributedlog.api.DistributedLogManager;
 import org.apache.distributedlog.common.concurrent.FutureEventListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -55,6 +58,7 @@ import static org.apache.bookkeeper.mledger.util.SafeRun.safeRun;
 public class DlogBasedEntryCacheImpl implements DlogBasedEntryCache {
 
     private final DlogBasedEntryCacheManager manager;
+    private DistributedLogManager distributedLogManager;
     private final DlogBasedManagedLedger ml;
     private final RangeCache<DlogBasedPosition, DlogBasedEntry> entries;
 
@@ -75,6 +79,9 @@ public class DlogBasedEntryCacheImpl implements DlogBasedEntryCache {
         if (log.isDebugEnabled()) {
             log.debug("[{}] Initialized managed-ledger entry cache", ml.getName());
         }
+    }
+    public void setDistributedLogManager(DistributedLogManager dlm){
+        this.distributedLogManager = dlm;
     }
 
     @Override
@@ -174,10 +181,10 @@ public class DlogBasedEntryCacheImpl implements DlogBasedEntryCache {
     }
 
     @Override
-    public void asyncReadEntry(AsyncLogReader logReader, DlogBasedPosition position, final ReadEntryCallback callback,
+    public void asyncReadEntry(DlogBasedPosition position, final ReadEntryCallback callback,
                                final Object ctx) {
         if (log.isDebugEnabled()) {
-            log.debug("[{}] Reading entry log stream {}: {}", ml.getName(), logReader.getStreamName(), position.getEntryId());
+            log.debug("[{}] Reading entry(id:{}) in asyncReadEntry of cache", ml.getName(), position.getEntryId());
         }
         DlogBasedEntry entry = entries.get(position);
         if (entry != null) {
@@ -186,43 +193,47 @@ public class DlogBasedEntryCacheImpl implements DlogBasedEntryCache {
             manager.mlFactoryMBean.recordCacheHit(cachedEntry.getLength());
             callback.readEntryComplete(cachedEntry, ctx);
         } else {
-            logReader.readNext().whenComplete(new FutureEventListener<LogRecordWithDLSN>() {
-                @Override
-                public void onSuccess(LogRecordWithDLSN logRecordWithDLSN) {
-                    DlogBasedEntry returnEntry = DlogBasedEntry.create(logRecordWithDLSN);
-                    //todo if LogRecordWithDLSN implemented by ByteBuf, should we realase it after use it? or Dlog deal auto?
+            try{
+                AsyncLogReader logReader = distributedLogManager.getAsyncLogReader(position.getDlsn());
+                logReader.readNext().whenComplete(new FutureEventListener<LogRecordWithDLSN>() {
+                    @Override
+                    public void onSuccess(LogRecordWithDLSN logRecordWithDLSN) {
+                        DlogBasedEntry returnEntry = DlogBasedEntry.create(logRecordWithDLSN);
+                        manager.mlFactoryMBean.recordCacheMiss(1, returnEntry.getLength());
+                        ml.mbean.addReadEntriesSample(1, returnEntry.getLength());
+                        ml.getExecutor().submitOrdered(ml.getName(), safeRun(() -> {
+                            callback.readEntryComplete(returnEntry, ctx);
+                        }));
 
-                    manager.mlFactoryMBean.recordCacheMiss(1, returnEntry.getLength());
-                    ml.mbean.addReadEntriesSample(1, returnEntry.getLength());
+                        logReader.asyncClose();
+                    }
 
-                    ml.getExecutor().submitOrdered(ml.getName(), safeRun(() -> {
-                        callback.readEntryComplete(returnEntry, ctx);
-                    }));
+                    @Override
+                    public void onFailure(Throwable throwable) {
 
-                    logReader.asyncClose();
-                }
+                        callback.readEntryFailed(new ManagedLedgerException(throwable), ctx);
+                        logReader.asyncClose();
+                    }
+                });
 
-                @Override
-                public void onFailure(Throwable throwable) {
+            }catch (IOException e){
+                log.error("[{}] Read using log reader in asyncReadEntry fail {}", ml.getName(),e);
 
-                    callback.readEntryFailed(new ManagedLedgerException(throwable), ctx);
-                    logReader.asyncClose();
-                }
-            });
+            }
 
         }
     }
 
     @Override
     @SuppressWarnings({ "unchecked", "rawtypes" })
-    public void asyncReadEntry(AsyncLogReader logReader, long logSegNo, long firstEntry, long lastEntry, boolean isSlowestReader,
+    public void asyncReadEntry(long logSegNo, long firstEntry, long lastEntry, boolean isSlowestReader,
                                final ReadEntriesCallback callback, Object ctx) {
         final int entriesToRead = (int) (lastEntry - firstEntry) + 1;
         final DlogBasedPosition firstPosition = DlogBasedPosition.get(logSegNo,firstEntry);
         final DlogBasedPosition lastPosition = DlogBasedPosition.get(logSegNo,lastEntry);
 
         if (log.isDebugEnabled()) {
-            log.debug("[{}] Reading entries range log stream {}: {} to {}", ml.getName(), logReader.getStreamName(), firstEntry, lastEntry);
+            log.debug("[{}] Reading entries range : {} to {} in asyncReadEntry of cache", ml.getName(), firstEntry, lastEntry);
         }
         Collection<DlogBasedEntry> cachedEntries = entries.getRange(firstPosition, lastPosition);
 
@@ -239,10 +250,8 @@ public class DlogBasedEntryCacheImpl implements DlogBasedEntryCache {
 
             manager.mlFactoryMBean.recordCacheHits(entriesToReturn.size(), totalCachedSize);
             if (log.isDebugEnabled()) {
-                log.debug("[{}] Log stream {} -- Found in cache entries: {}-{}", ml.getName(), logReader.getStreamName(), firstEntry,
-                        lastEntry);
+                log.debug("[{}] Entries : {}-{} Found in cache", ml.getName(), firstEntry, lastEntry);
             }
-
             callback.readEntriesComplete((List) entriesToReturn, ctx);
 
         } else {
@@ -250,24 +259,27 @@ public class DlogBasedEntryCacheImpl implements DlogBasedEntryCache {
                 cachedEntries.forEach(entry -> entry.release());
             }
 
-            //todo do I use futureListener here ok?
-            // Read all the entries from dlog
-            logReader.readBulk(entriesToRead).whenComplete(new FutureEventListener<List<LogRecordWithDLSN>>() {
-                @Override
-                public void onSuccess(List<LogRecordWithDLSN> logRecordWithDLSNs) {
+            try{
 
-                    checkNotNull(ml.getName());
-                    checkNotNull(ml.getExecutor());
-                    ml.getExecutor().submitOrdered(ml.getName(), safeRun(() -> {
-                        // We got the entries, we need to transform them to a List<> type
-                        final List<DlogBasedEntry> entriesToReturn = Lists.newArrayListWithExpectedSize(entriesToRead);
-                        long totalSize = 0;
-                        Iterator iterator = logRecordWithDLSNs.iterator();
-                        while (iterator.hasNext()){
-                            DlogBasedEntry entry = DlogBasedEntry.create((LogRecordWithDLSN) iterator.next());
-                            entriesToReturn.add(entry);
-                            totalSize += entry.getLength();
-                        }
+                AsyncLogReader logReader = distributedLogManager.getAsyncLogReader(new DLSN(logSegNo, firstEntry, 0));
+                //todo do I use futureListener here ok?
+                // Read all the entries from dlog
+                logReader.readBulk(entriesToRead, 100, TimeUnit.MILLISECONDS).whenComplete(new FutureEventListener<List<LogRecordWithDLSN>>() {
+                    @Override
+                    public void onSuccess(List<LogRecordWithDLSN> logRecordWithDLSNs) {
+
+                        checkNotNull(ml.getName());
+                        checkNotNull(ml.getExecutor());
+                        ml.getExecutor().submitOrdered(ml.getName(), safeRun(() -> {
+                            // We got the entries, we need to transform them to a List<> type
+                            final List<DlogBasedEntry> entriesToReturn = Lists.newArrayListWithExpectedSize(entriesToRead);
+                            long totalSize = 0;
+                            Iterator iterator = logRecordWithDLSNs.iterator();
+                            while (iterator.hasNext()){
+                                DlogBasedEntry entry = DlogBasedEntry.create((LogRecordWithDLSN) iterator.next());
+                                entriesToReturn.add(entry);
+                                totalSize += entry.getLength();
+                            }
 //                        update totalSize failure in lambda
 //                        logRecordWithDLSNs.forEach(logRecordWithDLSN -> {
 //                            DlogBasedEntry entry = DlogBasedEntry.create(logRecordWithDLSN);
@@ -277,21 +289,26 @@ public class DlogBasedEntryCacheImpl implements DlogBasedEntryCache {
 //                            totalSize += entry.getLength();
 //                        });
 
-                        manager.mlFactoryMBean.recordCacheMiss(entriesToReturn.size(), totalSize);
-                        ml.getMBean().addReadEntriesSample(entriesToReturn.size(), totalSize);
+                            manager.mlFactoryMBean.recordCacheMiss(entriesToReturn.size(), totalSize);
+                            ml.getMBean().addReadEntriesSample(entriesToReturn.size(), totalSize);
 
-                        callback.readEntriesComplete((List) entriesToReturn, ctx);
-                    }));
-                    logReader.asyncClose();
-                }
+                            callback.readEntriesComplete((List) entriesToReturn, ctx);
+                        }));
+                        logReader.asyncClose();
+                    }
 
-                @Override
-                public void onFailure(Throwable throwable) {
-                    callback.readEntriesFailed(new ManagedLedgerException(throwable), ctx);
-                    logReader.asyncClose();
-                }
-            });
-        }
+                    @Override
+                    public void onFailure(Throwable throwable) {
+                        callback.readEntriesFailed(new ManagedLedgerException(throwable), ctx);
+                        logReader.asyncClose();
+                    }
+                });
+
+
+            }catch (IOException e){
+                log.error("[{}] Read using log reader in asyncReadEntry fail {}", ml.getName(),e);
+            }
+          }
     }
 
     @Override

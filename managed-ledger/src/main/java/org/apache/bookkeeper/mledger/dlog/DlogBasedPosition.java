@@ -4,6 +4,8 @@ import org.apache.bookkeeper.mledger.Position;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats;
 import org.apache.distributedlog.DLSN;
 
+import static com.google.common.base.Preconditions.checkNotNull;
+
 /**
  * manage dlog DLSN, when entry aggregate buffer=1,
  * LogSegmentSequenceNo-> ledgerId(bk), EntryId -> EntryId(pulsar)
@@ -14,6 +16,9 @@ public class DlogBasedPosition implements Position, Comparable<DlogBasedPosition
 
     public DlogBasedPosition(long logSegmentSequenceNo, long entryId, long slotId){
         dlsn = new DLSN(logSegmentSequenceNo, entryId, slotId);
+    }
+    public DlogBasedPosition(long logSegmentSequenceNo, long entryId){
+        dlsn = new DLSN(logSegmentSequenceNo, entryId, 0);
     }
     public static Position earliest = new DlogBasedPosition(-1, -1, -1);
     public static Position latest = new DlogBasedPosition(Long.MAX_VALUE, Long.MAX_VALUE, 0);
@@ -27,6 +32,7 @@ public class DlogBasedPosition implements Position, Comparable<DlogBasedPosition
         this.dlsn = new DLSN(pi.getLedgerId(),pi.getEntryId(),0);
     }
     public DlogBasedPosition(DLSN dlsn){
+        checkNotNull(dlsn);
         this.dlsn = dlsn;
     }
     public DlogBasedPosition(DlogBasedPosition dlogBasedPosition){

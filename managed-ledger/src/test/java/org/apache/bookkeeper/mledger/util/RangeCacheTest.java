@@ -55,6 +55,11 @@ public class RangeCacheTest {
 
             return false;
         }
+
+        @Override
+        public ReferenceCounted touch(Object o) {
+            return null;
+        }
     }
 
     @Test
