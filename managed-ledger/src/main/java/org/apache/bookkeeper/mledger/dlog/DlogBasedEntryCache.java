@@ -23,12 +23,18 @@ import org.apache.bookkeeper.mledger.AsyncCallbacks.ReadEntryCallback;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.bookkeeper.mledger.util.Pair;
 import org.apache.distributedlog.api.AsyncLogReader;
+import org.apache.distributedlog.api.DistributedLogManager;
 
 /**
  * Cache of entries used by a single ManagedLedger. An EntryCache is compared to other EntryCache instances using their
  * size (the memory that is occupied by each of them).
  */
 public interface DlogBasedEntryCache extends Comparable<DlogBasedEntryCache> {
+
+    /**
+     * set dlm
+     */
+    void setDistributedLogManager(DistributedLogManager dlm);
 
     /**
      * @return the name of the cache
@@ -83,8 +89,6 @@ public interface DlogBasedEntryCache extends Comparable<DlogBasedEntryCache> {
      *
      * Get the entry data either from cache or dlog and mixes up the results in a single list.
      *
-     * @param logReader
-     *            the logReader
      * @param logSegNo
      *            the log segment #
      * @param firstEntry
@@ -98,7 +102,7 @@ public interface DlogBasedEntryCache extends Comparable<DlogBasedEntryCache> {
      * @param ctx
      *            the context object
      */
-    void asyncReadEntry(AsyncLogReader logReader,long logSegNo, long firstEntry, long lastEntry, boolean isSlowestReader,
+    void asyncReadEntry(long logSegNo, long firstEntry, long lastEntry, boolean isSlowestReader,
                         ReadEntriesCallback callback, Object ctx);
 
     /**
@@ -106,8 +110,6 @@ public interface DlogBasedEntryCache extends Comparable<DlogBasedEntryCache> {
      *
      * Get the entry data either from cache or dlog and mixes up the results in a single list.
      *
-     * @param logReader
-     *            the logReader
      * @param position
      *            position to read the entry from
      * @param callback
@@ -115,7 +117,7 @@ public interface DlogBasedEntryCache extends Comparable<DlogBasedEntryCache> {
      * @param ctx
      *            the context object
      */
-    void asyncReadEntry(AsyncLogReader logReader, DlogBasedPosition position, ReadEntryCallback callback, Object ctx);
+    void asyncReadEntry(DlogBasedPosition position, ReadEntryCallback callback, Object ctx);
 
     /**
      * Get the total size in bytes of all the entries stored in this cache

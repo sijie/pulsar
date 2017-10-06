@@ -60,6 +60,7 @@ import org.apache.bookkeeper.mledger.ManagedLedgerConfig;
 import org.apache.bookkeeper.mledger.ManagedLedgerException;
 import org.apache.bookkeeper.mledger.ManagedLedgerException.MetaStoreException;
 import org.apache.bookkeeper.mledger.ManagedLedgerInfo;
+import org.apache.bookkeeper.mledger.impl.ManagedLedgerConfigImpl;
 import org.apache.bookkeeper.mledger.impl.ManagedLedgerFactoryImpl;
 import org.apache.bookkeeper.mledger.impl.ManagedLedgerOfflineBacklog;
 import org.apache.bookkeeper.mledger.impl.MetaStore.MetaStoreCallback;
@@ -1088,7 +1089,7 @@ public class PersistentTopics extends AdminResource {
                     return offlineTopicStats;
                 }
             }
-            final ManagedLedgerConfig config = pulsar().getBrokerService().getManagedLedgerConfig(dn).get();
+            final ManagedLedgerConfigImpl config = (ManagedLedgerConfigImpl)pulsar().getBrokerService().getManagedLedgerConfig(dn).get();
             ManagedLedgerOfflineBacklog offlineTopicBacklog = new ManagedLedgerOfflineBacklog(config.getDigestType(),
                     config.getPassword(), pulsar().getAdvertisedAddress(), false);
             offlineTopicStats = offlineTopicBacklog

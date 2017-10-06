@@ -50,7 +50,7 @@ public class ManagedLedgerClientFactory implements Closeable {
         if(conf.getManagedLedgerDefaultImplType() == 0)
             this.managedLedgerFactory = new ManagedLedgerFactoryImpl(bkClient, zkClient, managedLedgerFactoryConfig);
         else
-            this.managedLedgerFactory = new DlogBasedManagedLedgerFactory(bkClient,conf.getZookeeperServers(),managedLedgerFactoryConfig);
+            this.managedLedgerFactory = new DlogBasedManagedLedgerFactory(conf.getZookeeperServers(),managedLedgerFactoryConfig);
     }
 
     public ManagedLedgerFactory getManagedLedgerFactory() {
