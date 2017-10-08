@@ -374,7 +374,6 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
         entryCacheManager.removeEntryCache(ledger.getName());
     }
 
-    //todo is it necessary to unbound dl namespace when shutdown
     @Override
     public void shutdown() throws InterruptedException, ManagedLedgerException {
         statsTask.cancel(true);

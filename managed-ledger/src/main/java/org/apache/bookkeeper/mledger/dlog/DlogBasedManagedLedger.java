@@ -38,6 +38,7 @@ import org.apache.bookkeeper.mledger.util.Pair;
 import org.apache.bookkeeper.util.OrderedSafeExecutor;
 import org.apache.bookkeeper.util.UnboundArrayBlockingQueue;
 import org.apache.distributedlog.BookKeeperClient;
+import org.apache.distributedlog.DLSN;
 import org.apache.distributedlog.DistributedLogConfiguration;
 import org.apache.distributedlog.LogSegmentMetadata;
 import org.apache.distributedlog.api.AsyncLogReader;
@@ -319,6 +320,12 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
         if (log.isDebugEnabled()) {
             log.debug("[{}] initializing log writer.", name);
         }
+        CountDownLatch openLatch = new CountDownLatch(1);
+        // status exception
+        class Result {
+            ManagedLedgerException status = null;
+        }
+        final Result result = new Result();
 
         if (state == State.Terminated) {
             // When recovering a terminated managed ledger, we don't need to create
@@ -336,34 +343,44 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
                 DlogBasedManagedLedger.this.asyncLogWriter = asyncLogWriter;
                 mbean.endDataLedgerCreateOp();
                 log.info("[{}] Created log writer {}", name, asyncLogWriter.toString());
-                lastLedgerCreatedTimestamp = System.currentTimeMillis();
-                updateLedgers();
-                try{
-                    log.info("before getLastDLSN");
-                    lastConfirmedEntry = new DlogBasedPosition(dlm.getLastDLSN());
-                    log.info("after getLastDLSN");
-                } catch (LogEmptyException lee){
-                    // the stream has no entry, reset the lastConfirmedEntry
-                    lastConfirmedEntry = new DlogBasedPosition(currentLedger,-1,0);
-                    // dlog has no logsegment's metadata, the ledgers will be emtpy, in case cursor read fail
-                    LedgerInfo info = LedgerInfo.newBuilder().setLedgerId(currentLedger)
-                            .setTimestamp(System.currentTimeMillis()).build();
-                    ledgers.put(currentLedger, info);
-                    log.info("the log stream is empty {}, current lce is {}",lee.toString(),lastConfirmedEntry);
-                } catch(Exception e){
-                    log.error("Faced Exception in getLastDLSN",e);
-                }
                 STATE_UPDATER.set(DlogBasedManagedLedger.this, State.WriterOpened);
-                initializeCursors(callback);
+                openLatch.countDown();
             }
 
             @Override
             public void onFailure(Throwable throwable) {
                 log.error("Failed open AsyncLogWriter for {}",name,throwable);
                 callback.initializeFailed(new ManagedLedgerException(throwable));
-
+                result.status = new ManagedLedgerException(throwable);
+                openLatch.countDown();
             }
         });
+        try{
+            openLatch.await();
+        } catch (InterruptedException ie){
+            log.error("Faced InterruptedException while waiting the open log writer", ie);
+        }
+        if(result.status != null){
+            return;
+        }
+        try{
+            log.info("before getLastDLSN");
+            lastConfirmedEntry = new DlogBasedPosition(dlm.getLastDLSN());
+            log.info("after getLastDLSN");
+        } catch (LogEmptyException lee){
+            // the stream has no entry, reset the lastConfirmedEntry
+            lastConfirmedEntry = new DlogBasedPosition(currentLedger,-1,0);
+            // dlog has no logsegment's metadata, the ledgers will be emtpy, in case cursor read fail
+            LedgerInfo info = LedgerInfo.newBuilder().setLedgerId(currentLedger)
+                    .setTimestamp(System.currentTimeMillis()).build();
+            ledgers.put(currentLedger, info);
+            log.info("the log stream is empty {}, current lce is {}",lee.toString(),lastConfirmedEntry);
+        } catch(Exception e){
+            log.error("Faced Exception in getLastDLSN",e);
+        }
+
+        initializeCursors(callback);
+
 
     }
 
@@ -1030,8 +1047,21 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
                     log.debug("[{}] Close complete for log writer {}", name, asyncLogWriter.toString());
                 }
                 mbean.endDataLedgerCloseOp();
+                try{
+                    dlm.asyncClose().whenComplete(new FutureEventListener<Void>() {
+                        @Override
+                        public void onSuccess(Void aVoid) {
+                            closeAllCursors(callback, ctx);
+                        }
 
-                closeAllCursors(callback, ctx);
+                        @Override
+                        public void onFailure(Throwable throwable) {
+
+                        }
+                    });
+                } catch (Exception ioe){
+                    log.error("[{}] Close dlm fail", name, ioe);
+                }
             }
 
             @Override
@@ -1058,6 +1088,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
             return null;
         });
     }
+
 
     // //////////////////////////////////////////////////////////////////////
     // Callbacks
