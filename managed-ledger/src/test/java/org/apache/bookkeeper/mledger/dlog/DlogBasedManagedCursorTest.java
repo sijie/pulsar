@@ -878,7 +878,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
         // Reopen
 
         ManagedLedgerFactory factory2 = new DlogBasedManagedLedgerFactory(bkc, zkServers, createDLMURI("/default_namespace"));
-        ledger = factory.open("my_test_ledger");
+        ledger = factory2.open("my_test_ledger");
         c1 = ledger.openCursor("c1");
         c2 = ledger.openCursor("c2");
         c3 = ledger.openCursor("c3");
@@ -1120,7 +1120,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
         ManagedLedgerFactory factory2 = new DlogBasedManagedLedgerFactory(bkc, zkServers, createDLMURI("/default_namespace"));
 
-        bkc.close();
+        TestDistributedLogBase.teardownCluster();
 //        bkc.failAfter(4, BKException.Code.MetadataVersionException);
 
         try {
