@@ -40,6 +40,7 @@ import org.apache.bookkeeper.util.UnboundArrayBlockingQueue;
 import org.apache.distributedlog.BookKeeperClient;
 import org.apache.distributedlog.DLSN;
 import org.apache.distributedlog.DistributedLogConfiguration;
+import org.apache.distributedlog.LogRecord;
 import org.apache.distributedlog.LogSegmentMetadata;
 import org.apache.distributedlog.api.AsyncLogReader;
 import org.apache.distributedlog.api.AsyncLogWriter;
@@ -209,7 +210,6 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
 
     synchronized void initialize(final ManagedLedgerInitializeLedgerCallback callback, final Object ctx)  throws IOException{
         log.info("Opening managed ledger {}", name);
-        //todo is this check necessary
         if(dlNamespace.logExists(name))
         {
             dlm = dlNamespace.openLog(name,Optional.of(dlConfig),Optional.empty(),Optional.empty());
@@ -335,34 +335,9 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
             return;
         }
 
-        // Open a new log writer to response writing
-        mbean.startDataLedgerCreateOp();
-        dlm.openAsyncLogWriter().whenComplete(new FutureEventListener<AsyncLogWriter>() {
-            @Override
-            public void onSuccess(AsyncLogWriter asyncLogWriter) {
-                DlogBasedManagedLedger.this.asyncLogWriter = asyncLogWriter;
-                mbean.endDataLedgerCreateOp();
-                log.info("[{}] Created log writer {}", name, asyncLogWriter.toString());
-                STATE_UPDATER.set(DlogBasedManagedLedger.this, State.WriterOpened);
-                openLatch.countDown();
-            }
-
-            @Override
-            public void onFailure(Throwable throwable) {
-                log.error("Failed open AsyncLogWriter for {}",name,throwable);
-                callback.initializeFailed(new ManagedLedgerException(throwable));
-                result.status = new ManagedLedgerException(throwable);
-                openLatch.countDown();
-            }
-        });
-        try{
-            openLatch.await();
-        } catch (InterruptedException ie){
-            log.error("Faced InterruptedException while waiting the open log writer", ie);
-        }
-        if(result.status != null){
-            return;
-        }
+        // if get LastDLSN after get log writer, this will run infinitely in acknowledger1() test
+        // when in work network, but is ok when in home network.
+        // but before or after are all ok in Dlog Test todo strange
         try{
             log.info("before getLastDLSN");
             lastConfirmedEntry = new DlogBasedPosition(dlm.getLastDLSN());
@@ -378,9 +353,39 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
         } catch(Exception e){
             log.error("Faced Exception in getLastDLSN",e);
         }
+        // Open a new log writer to response writing
+        mbean.startDataLedgerCreateOp();
+        dlm.openAsyncLogWriter().whenComplete(new FutureEventListener<AsyncLogWriter>() {
+            @Override
+            public void onSuccess(AsyncLogWriter asyncLogWriter) {
+                DlogBasedManagedLedger.this.asyncLogWriter = asyncLogWriter;
+                mbean.endDataLedgerCreateOp();
+                log.info("[{}] Created log writer {}", name, asyncLogWriter.toString());
+                STATE_UPDATER.set(DlogBasedManagedLedger.this, State.WriterOpened);
+                openLatch.countDown();
+
+            }
+
+            @Override
+            public void onFailure(Throwable throwable) {
+                log.error("Failed open AsyncLogWriter for {}",name,throwable);
+                callback.initializeFailed(new ManagedLedgerException(throwable));
+                result.status = new ManagedLedgerException(throwable);
+                openLatch.countDown();
+            }
+        });
+
+        try{
+            openLatch.await();
+        } catch (InterruptedException ie){
+            log.error("Faced InterruptedException while waiting the open log writer", ie);
+        }
+        if(result.status != null){
+            return;
+        }
+
 
         initializeCursors(callback);
-
 
     }
 

@@ -589,7 +589,7 @@ flexible messaging model and an intuitive client API.</description>
             -Dorg.slf4j.simpleLogger.showDateTime=true
             -Dorg.slf4j.simpleLogger.log.org.apache.zookeeper=off
             -Dorg.slf4j.simpleLogger.log.org.apache.bookkeeper=off
-            -Dorg.slf4j.simpleLogger.log.org.apache.bookkeeper.mledger=debug
+            -Dorg.slf4j.simpleLogger.log.org.apache.bookkeeper.mledger=trace
           </argLine>
           <reuseForks>false</reuseForks>
           <forkCount>1</forkCount>
