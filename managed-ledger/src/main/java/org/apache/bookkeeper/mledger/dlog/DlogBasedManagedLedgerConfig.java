@@ -38,7 +38,6 @@ public class DlogBasedManagedLedgerConfig extends ManagedLedgerConfig{
 
     private int maxUnackedRangesToPersist = 10000;
     private int maxUnackedRangesToPersistInZk = 1000;
-    private int maxEntriesPerLedger = 50000;
     private int maxSizePerLedgerMb = 100;
     private int minimumRolloverTimeMs = 0;
     private long maximumRolloverTimeMs = TimeUnit.HOURS.toMillis(4);
@@ -57,21 +56,6 @@ public class DlogBasedManagedLedgerConfig extends ManagedLedgerConfig{
     private DigestType digestType = DigestType.MAC;
     private byte[] password = "".getBytes(Charsets.UTF_8);
 
-    /**
-     * @return the maxEntriesPerLedger
-     */
-    public int getMaxEntriesPerLedger() {
-        return maxEntriesPerLedger;
-    }
-
-    /**
-     * @param maxEntriesPerLedger
-     *            the maxEntriesPerLedger to set
-     */
-    public DlogBasedManagedLedgerConfig setMaxEntriesPerLedger(int maxEntriesPerLedger) {
-        this.maxEntriesPerLedger = maxEntriesPerLedger;
-        return this;
-    }
 
     /**
      * @return the maxSizePerLedgerMb

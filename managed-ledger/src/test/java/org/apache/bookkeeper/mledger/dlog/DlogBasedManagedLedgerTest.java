@@ -210,7 +210,7 @@ public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
         ledger.close();
         factory2.shutdown();
     }
-    **/
+
     @Test(timeOut = 80000)
     public void deleteAndReopen() throws Exception {
         ManagedLedger ledger = factory.open("my_test_ledger");
@@ -232,7 +232,6 @@ public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
         assertEquals(ledger.getNumberOfEntries(), 0);
         ledger.close();
     }
-
     @Test(timeOut = 40000)
     public void deleteAndReopenWithCursors() throws Exception {
         ManagedLedger ledger = factory.open("my_test_ledger");
@@ -255,7 +254,6 @@ public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
         ledger.close();
     }
 
-    /**
      @Test // (timeOut = 20000)
      public void asyncOpenClosedLedger() throws Exception {
      DlogBasedManagedLedger ledger = (DlogBasedManagedLedger) factory.open("my-closed-ledger");
@@ -371,7 +369,74 @@ public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
 
         counter.await();
     }
-**/
+     @Test(timeOut = 20000)
+     public void differentSessions() throws Exception {
+     ManagedLedger ledger = factory.open("my_test_ledger");
+
+     assertEquals(ledger.getNumberOfEntries(), 0);
+     assertEquals(ledger.getTotalSize(), 0);
+
+     ManagedCursor cursor = ledger.openCursor("c1");
+
+     ledger.addEntry("dummy-entry-1".getBytes(Encoding));
+
+     assertEquals(ledger.getNumberOfEntries(), 1);
+     assertEquals(ledger.getTotalSize(), "dummy-entry-1".getBytes(Encoding).length);
+
+     assertEquals(cursor.hasMoreEntries(), true);
+     assertEquals(cursor.getNumberOfEntries(), 1);
+
+     ledger.close();
+
+     // Create a new factory and re-open the same managed ledger
+     factory = new DlogBasedManagedLedgerFactory(bkc, zkServers, createDLMURI("/default_namespace"));
+
+     ledger = factory.open("my_test_ledger");
+
+     assertEquals(ledger.getNumberOfEntries(), 1);
+     assertEquals(ledger.getTotalSize(), "dummy-entry-1".getBytes(Encoding).length);
+
+     cursor = ledger.openCursor("c1");
+
+     assertEquals(cursor.hasMoreEntries(), true);
+     assertEquals(cursor.getNumberOfEntries(), 1);
+
+     ledger.addEntry("dummy-entry-2".getBytes(Encoding));
+
+     assertEquals(ledger.getNumberOfEntries(), 2);
+     assertEquals(ledger.getTotalSize(), "dummy-entry-1".getBytes(Encoding).length * 2);
+
+     assertEquals(cursor.hasMoreEntries(), true);
+     assertEquals(cursor.getNumberOfEntries(), 2);
+
+     ledger.close();
+     }
+     @Test
+     public void discardEmptyLedgersOnClose() throws Exception {
+     DlogBasedManagedLedger ledger = (DlogBasedManagedLedger) factory.open("my_test_ledger");
+     ManagedCursor c1 = ledger.openCursor("c1");
+
+     ledger.addEntry("entry".getBytes());
+
+     assertEquals(ledger.getLedgersInfoAsList().size(), 1);
+
+     c1.close();
+     ledger.close();
+
+     // re-open
+     ledger = (DlogBasedManagedLedger) factory.open("my_test_ledger");
+     assertEquals(ledger.getLedgersInfoAsList().size(), 1); // 1 ledger with 1 entry
+
+     c1.close();
+     ledger.close();
+
+     // re-open, now the previous empty ledger should have been discarded
+     ledger = (DlogBasedManagedLedger) factory.open("my_test_ledger");
+     assertEquals(ledger.getLedgersInfoAsList().size(), 1); // 1 ledger with 1 entry
+     // writing ledger
+     }
+
+     **/
     @Test
     public void acknowledge1() throws Exception {
         ManagedLedger ledger = factory.open("my_test_ledger");
@@ -422,7 +487,9 @@ public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
         ledger.close();
     }
 
-    @Test(timeOut = 20000)
+    // dlog has stream interface, entries per ledger is not necessary,
+    // while below 5 test need this property, so disable them
+    @Test(timeOut = 20000, enabled = false)
     public void spanningMultipleLedgers() throws Exception {
         ManagedLedgerConfig config = new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(10);
         ManagedLedger ledger = factory.open("my_test_ledger", config);
@@ -455,7 +522,7 @@ public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
 
         ledger.close();
     }
-    @Test(timeOut = 20000)
+    @Test(timeOut = 20000, enabled = false)
     public void spanningMultipleLedgersWithSize() throws Exception {
         ManagedLedgerConfig config = new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(1000000);
         config.setMaxSizePerLedgerMb(1);
@@ -494,7 +561,7 @@ public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
         assertEquals(last.getEntryId(), 0);
         ledger.close();
     }
-    @Test(timeOut = 20000)
+    @Test(timeOut = 20000, enabled = false)
     public void testProducerAndNoConsumer() throws Exception {
         ManagedLedgerConfig config = new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(1);
         ManagedLedger ledger = factory.open("my_test_ledger", config);
@@ -518,7 +585,7 @@ public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
             Thread.sleep(100);
         }
     }
-    @Test(timeOut = 20000)
+    @Test(timeOut = 20000, enabled = false)
     public void testTrimmer() throws Exception {
         ManagedLedgerConfig config = new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(1);
         ManagedLedger ledger = factory.open("my_test_ledger", config);
@@ -546,47 +613,25 @@ public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
             Thread.sleep(10);
         }
     }
-    @Test(timeOut = 20000)
-    public void differentSessions() throws Exception {
-        ManagedLedger ledger = factory.open("my_test_ledger");
+    @Test(enabled = false)
+    public void totalSizeTest() throws Exception {
+        ManagedLedgerConfig conf = new DlogBasedManagedLedgerConfig();
+        conf.setMaxEntriesPerLedger(1);
+        DlogBasedManagedLedger ledger = (DlogBasedManagedLedger) factory.open("my_test_ledger", conf);
+        ManagedCursor c1 = ledger.openCursor("c1");
 
-        assertEquals(ledger.getNumberOfEntries(), 0);
-        assertEquals(ledger.getTotalSize(), 0);
+        ledger.addEntry(new byte[10], 1, 8);
 
-        ManagedCursor cursor = ledger.openCursor("c1");
+        assertEquals(ledger.getTotalSize(), 8);
 
-        ledger.addEntry("dummy-entry-1".getBytes(Encoding));
+        DlogBasedPosition p2 = (DlogBasedPosition) ledger.addEntry(new byte[12], 2, 5);
 
-        assertEquals(ledger.getNumberOfEntries(), 1);
-        assertEquals(ledger.getTotalSize(), "dummy-entry-1".getBytes(Encoding).length);
+        assertEquals(ledger.getTotalSize(), 13);
+        c1.markDelete(new DlogBasedPosition(p2.getLedgerId(), -1, -1));
 
-        assertEquals(cursor.hasMoreEntries(), true);
-        assertEquals(cursor.getNumberOfEntries(), 1);
-
-        ledger.close();
-
-        // Create a new factory and re-open the same managed ledger
-        factory = new DlogBasedManagedLedgerFactory(bkc, zkServers, createDLMURI("/default_namespace"));
-
-        ledger = factory.open("my_test_ledger");
-
-        assertEquals(ledger.getNumberOfEntries(), 1);
-        assertEquals(ledger.getTotalSize(), "dummy-entry-1".getBytes(Encoding).length);
-
-        cursor = ledger.openCursor("c1");
-
-        assertEquals(cursor.hasMoreEntries(), true);
-        assertEquals(cursor.getNumberOfEntries(), 1);
-
-        ledger.addEntry("dummy-entry-2".getBytes(Encoding));
-
-        assertEquals(ledger.getNumberOfEntries(), 2);
-        assertEquals(ledger.getTotalSize(), "dummy-entry-1".getBytes(Encoding).length * 2);
-
-        assertEquals(cursor.hasMoreEntries(), true);
-        assertEquals(cursor.getNumberOfEntries(), 2);
-
-        ledger.close();
+        // Wait for background trimming
+        Thread.sleep(400);
+        assertEquals(ledger.getTotalSize(), 5);
     }
     @Test(enabled = false)
     public void fenceManagedLedger() throws Exception {
@@ -630,6 +675,7 @@ public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
         factory1.shutdown();
         factory2.shutdown();
     }
+
     @Test
     public void previousPosition() throws Exception {
         DlogBasedManagedLedger ledger = (DlogBasedManagedLedger) factory.open("my_test_ledger",
@@ -665,51 +711,7 @@ public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
         assertEquals(ledger.getPreviousPosition((DlogBasedPosition) p3), p2);
         assertEquals(ledger.getPreviousPosition((DlogBasedPosition) p4), p3);
     }
-    @Test
-    public void discardEmptyLedgersOnClose() throws Exception {
-        DlogBasedManagedLedger ledger = (DlogBasedManagedLedger) factory.open("my_test_ledger");
-        ManagedCursor c1 = ledger.openCursor("c1");
-
-        ledger.addEntry("entry".getBytes());
-
-        assertEquals(ledger.getLedgersInfoAsList().size(), 1);
-
-        c1.close();
-        ledger.close();
-
-        // re-open
-        ledger = (DlogBasedManagedLedger) factory.open("my_test_ledger");
-        assertEquals(ledger.getLedgersInfoAsList().size(), 2); // 1 ledger with 1 entry and the current writing ledger
-
-        c1.close();
-        ledger.close();
-
-        // re-open, now the previous empty ledger should have been discarded
-        ledger = (DlogBasedManagedLedger) factory.open("my_test_ledger");
-        assertEquals(ledger.getLedgersInfoAsList().size(), 2); // 1 ledger with 1 entry, and the current
-        // writing ledger
-    }
-   @Test
-    public void totalSizeTest() throws Exception {
-        ManagedLedgerConfig conf = new DlogBasedManagedLedgerConfig();
-        conf.setMaxEntriesPerLedger(1);
-        DlogBasedManagedLedger ledger = (DlogBasedManagedLedger) factory.open("my_test_ledger", conf);
-        ManagedCursor c1 = ledger.openCursor("c1");
-
-        ledger.addEntry(new byte[10], 1, 8);
-
-        assertEquals(ledger.getTotalSize(), 8);
-
-        DlogBasedPosition p2 = (DlogBasedPosition) ledger.addEntry(new byte[12], 2, 5);
-
-        assertEquals(ledger.getTotalSize(), 13);
-        c1.markDelete(new DlogBasedPosition(p2.getLedgerId(), -1, -1));
-
-        // Wait for background trimming
-        Thread.sleep(400);
-        assertEquals(ledger.getTotalSize(), 5);
-    }
-    @Test
+     @Test
     public void testRetention() throws Exception {
 //        ManagedLedgerFactory factory = new DlogBasedManagedLedgerFactory(bkc, zkServers, new ManagedLedgerFactoryConfig(), createDLMURI("/default_namespace"));
         ManagedLedgerConfig config = new DlogBasedManagedLedgerConfig();
@@ -861,8 +863,8 @@ public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
         DlogBasedManagedLedger ledger = (DlogBasedManagedLedger) factory.open("testCursorRecoveryForEmptyLedgers");
         ManagedCursor c1 = ledger.openCursor("c1");
 
-        // if no write, dlog has no bk ledger
-        assertEquals(ledger.getLedgersInfoAsList().size(), 0);
+        // if no write, dlog has no bk ledger, but we add a mock ledgerInfo with ledgerId = 1
+        assertEquals(ledger.getLedgersInfoAsList().size(), 1);
         assertEquals(c1.getMarkDeletedPosition(), ledger.lastConfirmedEntry);
 
         c1.close();

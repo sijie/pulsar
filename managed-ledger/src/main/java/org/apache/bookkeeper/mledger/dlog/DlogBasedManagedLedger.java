@@ -280,7 +280,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
                 try{
                     lh = bkc.get().openLedgerNoRecovery(logSegment.getLogSegmentId(),
                             dlshade.org.apache.bookkeeper.client.BookKeeper.DigestType.CRC32, dlConfig.getBKDigestPW().getBytes(UTF_8));
-                    info = LedgerInfo.newBuilder().setLedgerId(logSegment.getLogSegmentId()).setSize(lh.getLength())
+                    info = LedgerInfo.newBuilder().setLedgerId(logSegmentSequenceNumber).setSize(lh.getLength())
                             .setEntries(logSegment.getRecordCount())
                             .setTimestamp(logSegment.getCompletionTime()).build();
                     lh.close();
@@ -335,24 +335,6 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
             return;
         }
 
-        // if get LastDLSN after get log writer, this will run infinitely in acknowledger1() test
-        // when in work network, but is ok when in home network.
-        // but before or after are all ok in Dlog Test todo strange
-        try{
-            log.info("before getLastDLSN");
-            lastConfirmedEntry = new DlogBasedPosition(dlm.getLastDLSN());
-            log.info("after getLastDLSN");
-        } catch (LogEmptyException lee){
-            // the stream has no entry, reset the lastConfirmedEntry
-            lastConfirmedEntry = new DlogBasedPosition(currentLedger,-1,0);
-            // dlog has no logsegment's metadata, the ledgers will be emtpy, in case cursor read fail
-            LedgerInfo info = LedgerInfo.newBuilder().setLedgerId(currentLedger)
-                    .setTimestamp(System.currentTimeMillis()).build();
-            ledgers.put(currentLedger, info);
-            log.info("the log stream is empty {}, current lce is {}",lee.toString(),lastConfirmedEntry);
-        } catch(Exception e){
-            log.error("Faced Exception in getLastDLSN",e);
-        }
         // Open a new log writer to response writing
         mbean.startDataLedgerCreateOp();
         dlm.openAsyncLogWriter().whenComplete(new FutureEventListener<AsyncLogWriter>() {
@@ -384,7 +366,24 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
             return;
         }
 
-
+        // sometimes，if get LastDLSN after get log writer, this will run infinitely in acknowledger1() test
+        // when in work network, but is ok when in home network.
+        // but before or after are all ok in Dlog Test todo strange，maybe relative to this methods' synchronized
+        try{
+            log.info("before getLastDLSN");
+            lastConfirmedEntry = new DlogBasedPosition(dlm.getLastDLSN());
+            log.info("after getLastDLSN");
+        } catch (LogEmptyException lee){
+            // the stream has no entry, reset the lastConfirmedEntry
+            lastConfirmedEntry = new DlogBasedPosition(currentLedger,-1,0);
+            // dlog has no logsegment's metadata, the ledgers will be emtpy, in case cursor read fail
+            LedgerInfo info = LedgerInfo.newBuilder().setLedgerId(currentLedger)
+                    .setTimestamp(System.currentTimeMillis()).build();
+            ledgers.put(currentLedger, info);
+            log.info("the log stream is empty {}, current lce is {}",lee.toString(),lastConfirmedEntry);
+        } catch(Exception e){
+            log.error("Faced Exception in getLastDLSN",e);
+        }
         initializeCursors(callback);
 
     }
