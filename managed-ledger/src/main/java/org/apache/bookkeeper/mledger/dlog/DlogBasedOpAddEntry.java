@@ -164,7 +164,8 @@ class DlogBasedOpAddEntry extends SafeRunnable implements FutureEventListener<DL
             cb.addFailed(new ManagedLedgerException(throwable), ctx);
             ml.mbean.recordAddEntryError();
         }
-        // when to deal failure(start new log writer)
+        // todo when to deal failure(start new log writer)
+        // according to the type of throwable, do different handle
 //        ml.dealAddFailure();
     }
 }
