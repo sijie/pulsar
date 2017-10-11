@@ -2479,7 +2479,7 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
         final int totalAddEntries = 100;
         String ledgerName = "my_test_ledger";
         String cursorName = "c1";
-        ManagedLedgerConfig managedLedgerConfig = new ManagedLedgerConfig();
+        ManagedLedgerConfig managedLedgerConfig = new ManagedLedgerConfigImpl();
         // metaStore is allowed to store only up to 10 deleted entries range
         managedLedgerConfig.setMaxUnackedRangesToPersistInZk(10);
         ManagedLedgerImpl ledger = (ManagedLedgerImpl) factory.open(ledgerName, managedLedgerConfig);

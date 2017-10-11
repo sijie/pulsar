@@ -46,6 +46,7 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -61,7 +62,7 @@ public class DlogBasedEntryCacheImpl implements DlogBasedEntryCache {
     private DistributedLogManager distributedLogManager;
     private final DlogBasedManagedLedger ml;
     private final RangeCache<DlogBasedPosition, DlogBasedEntry> entries;
-
+    private final long READTIMEOUT = 1000;
     private static final double MB = 1024 * 1024;
 
     private static final Weighter<DlogBasedEntry> entryWeighter = new Weighter<DlogBasedEntry>() {
@@ -195,6 +196,7 @@ public class DlogBasedEntryCacheImpl implements DlogBasedEntryCache {
         } else {
             try{
                 AsyncLogReader logReader = distributedLogManager.getAsyncLogReader(position.getDlsn());
+
                 logReader.readNext().whenComplete(new FutureEventListener<LogRecordWithDLSN>() {
                     @Override
                     public void onSuccess(LogRecordWithDLSN logRecordWithDLSN) {
@@ -214,11 +216,16 @@ public class DlogBasedEntryCacheImpl implements DlogBasedEntryCache {
                         callback.readEntryFailed(new ManagedLedgerException(throwable), ctx);
                         logReader.asyncClose();
                     }
-                });
+                }).get(READTIMEOUT,TimeUnit.MILLISECONDS);
 
             }catch (IOException e){
                 log.error("[{}] Read using log reader in asyncReadEntry fail {}", ml.getName(),e);
+            } catch (TimeoutException te){
+                log.error("[{}] Read using log reader timeout", ml.getName(),te);
+                callback.readEntryFailed(new ManagedLedgerException(te), ctx);
 
+            } catch (Exception e){
+                log.error("[{}] Read using log reader in asyncReadEntry fail {}", ml.getName(),e);
             }
 
         }
@@ -233,7 +240,7 @@ public class DlogBasedEntryCacheImpl implements DlogBasedEntryCache {
         final DlogBasedPosition lastPosition = DlogBasedPosition.get(logSegNo,lastEntry);
 
         if (log.isDebugEnabled()) {
-            log.debug("[{}] Reading entries range : {} to {} in asyncReadEntry of cache", ml.getName(), firstEntry, lastEntry);
+            log.debug("[{}] Reading entries range : {} to {} in asyncReadEntries of cache", ml.getName(), firstEntry, lastEntry);
         }
         Collection<DlogBasedEntry> cachedEntries = entries.getRange(firstPosition, lastPosition);
 
@@ -302,11 +309,16 @@ public class DlogBasedEntryCacheImpl implements DlogBasedEntryCache {
                         callback.readEntriesFailed(new ManagedLedgerException(throwable), ctx);
                         logReader.asyncClose();
                     }
-                });
-
+                }).get(READTIMEOUT,TimeUnit.MILLISECONDS);
 
             }catch (IOException e){
-                log.error("[{}] Read using log reader in asyncReadEntry fail {}", ml.getName(),e);
+                log.error("[{}] Read using log reader in asyncReadEntries fail {}", ml.getName(),e);
+            } catch (TimeoutException te){
+                log.error("[{}] Read using log reader timeout", ml.getName(),te);
+                callback.readEntriesFailed(new ManagedLedgerException(te), ctx);
+
+            } catch (Exception e){
+                log.error("[{}] Read using log reader in asyncReadEntries fail {}", ml.getName(),e);
             }
           }
     }

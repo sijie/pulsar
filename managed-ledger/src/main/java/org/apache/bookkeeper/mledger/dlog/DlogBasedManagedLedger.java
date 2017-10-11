@@ -1215,7 +1215,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
 
     void asyncReadEntry(DlogBasedPosition position, ReadEntryCallback callback, Object ctx) {
         if (log.isDebugEnabled()) {
-            log.debug("[{}] Reading entry ledger {}: {}", name, position.getLedgerId(), position.getEntryId());
+            log.debug("[{}] Reading entry {}: {}", name, position.getLedgerId(), position.getEntryId());
         }
 
         entryCache.asyncReadEntry(position, callback, ctx);
