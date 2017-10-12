@@ -23,6 +23,7 @@ import static org.apache.commons.lang3.StringUtils.isBlank;
 import java.io.FileInputStream;
 import java.net.URL;
 
+import org.apache.distributedlog.LocalDLMEmulator;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.pulsar.broker.ServiceConfigurationUtils;
@@ -47,7 +48,9 @@ public class PulsarStandaloneStarter {
     PulsarService broker;
     PulsarAdmin admin;
     LocalBookkeeperEnsemble bkEnsemble;
+    LocalDLMEmulator localDLMEmulator;
     ServiceConfiguration config;
+    int mlType;
 
     @Parameter(names = { "-c", "--config" }, description = "Configuration file path", required = true)
     private String configFile;
@@ -107,6 +110,8 @@ public class PulsarStandaloneStarter {
 
         this.config = PulsarConfigurationLoader.create((new FileInputStream(configFile)), ServiceConfiguration.class);
         PulsarConfigurationLoader.isComplete(config);
+        mlType = config.getManagedLedgerDefaultImplType();
+        log.info("mlType is {}", mlType);
         // Set ZK server's host to localhost
         config.setZookeeperServers("127.0.0.1:" + zkPort);
         config.setGlobalZookeeperServers("127.0.0.1:" + zkPort);
@@ -121,6 +126,7 @@ public class PulsarStandaloneStarter {
             // Use advertised address from config file
         }
 
+
         Runtime.getRuntime().addShutdownHook(new Thread() {
             public void run() {
                 try {
@@ -131,6 +137,10 @@ public class PulsarStandaloneStarter {
                     if (bkEnsemble != null) {
                         bkEnsemble.stop();
                     }
+                    if (localDLMEmulator != null) {
+                        localDLMEmulator.teardown();
+                    }
+
                 } catch (Exception e) {
                     log.error("Shutdown failed: {}", e.getMessage());
                 }
@@ -147,9 +157,19 @@ public class PulsarStandaloneStarter {
         log.debug("--- setup PulsarStandaloneStarter ---");
 
         if (!onlyBroker) {
-            // Start LocalBookKeeper
-            bkEnsemble = new LocalBookkeeperEnsemble(numOfBk, zkPort, bkPort, zkDir, bkDir, wipeData);
-            bkEnsemble.startStandalone();
+            if(mlType == 1) {
+               localDLMEmulator = LocalDLMEmulator.newBuilder()
+                       .numBookies(numOfBk)
+                       .zkHost("127.0.0.1")
+                       .zkPort(zkPort)
+                       .shouldStartZK(false)
+                       .build();
+                localDLMEmulator.start();
+            } else {
+                // Start LocalBookKeeper
+                bkEnsemble = new LocalBookkeeperEnsemble(numOfBk, zkPort, bkPort, zkDir, bkDir, wipeData);
+                bkEnsemble.startStandalone();
+            }
         }
 
         if (noBroker) {

@@ -47,10 +47,11 @@ public class ManagedLedgerClientFactory implements Closeable {
         managedLedgerFactoryConfig.setCacheEvictionWatermark(conf.getManagedLedgerCacheEvictionWatermark());
 
 
-        if(conf.getManagedLedgerDefaultImplType() == 0)
-            this.managedLedgerFactory = new ManagedLedgerFactoryImpl(bkClient, zkClient, managedLedgerFactoryConfig);
+        if(conf.getManagedLedgerDefaultImplType() == 1)
+            this.managedLedgerFactory = new DlogBasedManagedLedgerFactory(conf.getZookeeperServers(),managedLedgerFactoryConfig, conf.getDlogDefaultNamespaceURI());
         else
-            this.managedLedgerFactory = new DlogBasedManagedLedgerFactory(conf.getZookeeperServers(),managedLedgerFactoryConfig);
+            this.managedLedgerFactory = new ManagedLedgerFactoryImpl(bkClient, zkClient, managedLedgerFactoryConfig);
+
     }
 
     public ManagedLedgerFactory getManagedLedgerFactory() {
