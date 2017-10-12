@@ -49,6 +49,7 @@ import org.apache.distributedlog.api.LogReader;
 import org.apache.distributedlog.api.namespace.Namespace;
 import org.apache.distributedlog.callback.LogSegmentListener;
 import org.apache.distributedlog.common.concurrent.FutureEventListener;
+import org.apache.distributedlog.common.concurrent.FutureUtils;
 import org.apache.distributedlog.exceptions.LogEmptyException;
 import org.apache.distributedlog.impl.BKNamespaceDriver;
 import org.apache.distributedlog.namespace.NamespaceDriver;
@@ -316,17 +317,12 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
      * create dlog log writer to enable ml's writing ability
      *
      */
+    //todo when ReopenML can't open logWriter, see test closeAndReopen() @ DlogBasedManagedLedgerTest
+    // when using the same factory to open ml again after close ml, open log writer runs infinitely some times.
     private synchronized void initializeLogWriter(final ManagedLedgerInitializeLedgerCallback callback) {
         if (log.isDebugEnabled()) {
             log.debug("[{}] initializing log writer.", name);
         }
-        CountDownLatch openLatch = new CountDownLatch(1);
-        // status exception
-        class Result {
-            ManagedLedgerException status = null;
-        }
-        final Result result = new Result();
-
         if (state == State.Terminated) {
             // When recovering a terminated managed ledger, we don't need to create
             // a new ledger for writing, since no more writes are allowed.
@@ -334,41 +330,19 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
             initializeCursors(callback);
             return;
         }
-
-        // Open a new log writer to response writing
-        mbean.startDataLedgerCreateOp();
-        dlm.openAsyncLogWriter().whenComplete(new FutureEventListener<AsyncLogWriter>() {
-            @Override
-            public void onSuccess(AsyncLogWriter asyncLogWriter) {
-                DlogBasedManagedLedger.this.asyncLogWriter = asyncLogWriter;
-                mbean.endDataLedgerCreateOp();
-                log.info("[{}] Created log writer {}", name, asyncLogWriter.toString());
-                STATE_UPDATER.set(DlogBasedManagedLedger.this, State.WriterOpened);
-                openLatch.countDown();
-
-            }
-
-            @Override
-            public void onFailure(Throwable throwable) {
-                log.error("Failed open AsyncLogWriter for {}",name,throwable);
-                callback.initializeFailed(new ManagedLedgerException(throwable));
-                result.status = new ManagedLedgerException(throwable);
-                openLatch.countDown();
-            }
-        });
-
         try{
-            openLatch.await();
-        } catch (InterruptedException ie){
-            log.error("Faced InterruptedException while waiting the open log writer", ie);
-        }
-        if(result.status != null){
+            mbean.startDataLedgerCreateOp();
+            asyncLogWriter = FutureUtils.result(dlm.openAsyncLogWriter());
+            STATE_UPDATER.set(DlogBasedManagedLedger.this, State.WriterOpened);
+            mbean.endDataLedgerCreateOp();
+            log.info("[{}] Created log writer {}", name, asyncLogWriter.toString());
+
+        } catch (Exception e){
+            log.error("[{}] Failed open AsyncLogWriter for {}",name, e.toString());
+            callback.initializeFailed(new ManagedLedgerException(e));
             return;
         }
 
-        // sometimes，if get LastDLSN after get log writer, this will run infinitely in acknowledger1() test
-        // when in work network, but is ok when in home network.
-        // but before or after are all ok in Dlog Test todo strange，maybe relative to this methods' synchronized
         try{
             log.info("before getLastDLSN");
             lastConfirmedEntry = new DlogBasedPosition(dlm.getLastDLSN());

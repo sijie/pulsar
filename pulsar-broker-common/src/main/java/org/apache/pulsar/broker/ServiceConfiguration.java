@@ -221,6 +221,10 @@ public class ServiceConfiguration implements PulsarConfiguration {
     /**** --- Managed Ledger --- ****/
     //Managed Ledger impl type, 0 indicate bk, 1 for dlog.
     private int managedLedgerDefaultImplType = 0;
+
+    //Dlog's default namespace, when using dlog
+    private String dlogDefaultNamespaceURI = "default_namespace";
+
     // Number of bookies to use when creating a ledger
     @FieldContext(minValue = 1)
     private int managedLedgerDefaultEnsembleSize = 1;
@@ -1202,4 +1206,12 @@ public class ServiceConfiguration implements PulsarConfiguration {
     public void setManagedLedgerDefaultImplType(int managedLedgerDefaultImplType) {
         this.managedLedgerDefaultImplType = managedLedgerDefaultImplType;
     }
+    public String getDlogDefaultNamespaceURI() {
+        return dlogDefaultNamespaceURI;
+    }
+
+    public void setDlogDefaultNamespaceURI(String dlogDefaultNamespaceURI) {
+        this.dlogDefaultNamespaceURI = dlogDefaultNamespaceURI;
+    }
+
 }

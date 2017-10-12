@@ -38,6 +38,7 @@ import org.apache.distributedlog.LogRecordWithDLSN;
 import org.apache.distributedlog.api.AsyncLogReader;
 import org.apache.distributedlog.api.DistributedLogManager;
 import org.apache.distributedlog.common.concurrent.FutureEventListener;
+import org.apache.distributedlog.common.concurrent.FutureUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -195,7 +196,7 @@ public class DlogBasedEntryCacheImpl implements DlogBasedEntryCache {
             callback.readEntryComplete(cachedEntry, ctx);
         } else {
             try{
-                AsyncLogReader logReader = distributedLogManager.getAsyncLogReader(position.getDlsn());
+                AsyncLogReader logReader = FutureUtils.result(distributedLogManager.openAsyncLogReader(position.getDlsn()));
 
                 logReader.readNext().whenComplete(new FutureEventListener<LogRecordWithDLSN>() {
                     @Override
@@ -268,7 +269,7 @@ public class DlogBasedEntryCacheImpl implements DlogBasedEntryCache {
 
             try{
 
-                AsyncLogReader logReader = distributedLogManager.getAsyncLogReader(new DLSN(logSegNo, firstEntry, 0));
+                AsyncLogReader logReader = FutureUtils.result(distributedLogManager.openAsyncLogReader(new DLSN(logSegNo, firstEntry, 0)));
                 //todo do I use futureListener here ok?
                 // Read all the entries from dlog
                 logReader.readBulk(entriesToRead, 100, TimeUnit.MILLISECONDS).whenComplete(new FutureEventListener<List<LogRecordWithDLSN>>() {
