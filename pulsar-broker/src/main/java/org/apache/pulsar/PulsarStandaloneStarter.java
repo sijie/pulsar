@@ -162,7 +162,7 @@ public class PulsarStandaloneStarter {
                        .numBookies(numOfBk)
                        .zkHost("127.0.0.1")
                        .zkPort(zkPort)
-                       .shouldStartZK(false)
+                       .shouldStartZK(true)
                        .build();
                 localDLMEmulator.start();
             } else {
