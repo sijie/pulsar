@@ -111,7 +111,6 @@ public class PulsarStandaloneStarter {
         this.config = PulsarConfigurationLoader.create((new FileInputStream(configFile)), ServiceConfiguration.class);
         PulsarConfigurationLoader.isComplete(config);
         mlType = config.getManagedLedgerDefaultImplType();
-        log.info("mlType is {}", mlType);
         // Set ZK server's host to localhost
         config.setZookeeperServers("127.0.0.1:" + zkPort);
         config.setGlobalZookeeperServers("127.0.0.1:" + zkPort);
@@ -129,22 +128,7 @@ public class PulsarStandaloneStarter {
 
         Runtime.getRuntime().addShutdownHook(new Thread() {
             public void run() {
-                try {
-                    if (broker != null) {
-                        broker.close();
-                    }
-
-                    if (bkEnsemble != null) {
-                        bkEnsemble.stop();
-                    }
-                    if (localDLMEmulator != null) {
-                        localDLMEmulator.teardown();
-                    }
-
-                } catch (Exception e) {
-                    log.error("Shutdown failed: {}", e.getMessage());
-                }
-            }
+                close(); }
         });
     }
 
@@ -158,13 +142,17 @@ public class PulsarStandaloneStarter {
 
         if (!onlyBroker) {
             if(mlType == 1) {
-               localDLMEmulator = LocalDLMEmulator.newBuilder()
+                //when start zk in localBk, should set this larger, or it will throw
+                // java.lang.Exception: Error starting zookeeper/bookkeeper, although it can start zk
+                localDLMEmulator = LocalDLMEmulator.newBuilder()
                        .numBookies(numOfBk)
                        .zkHost("127.0.0.1")
                        .zkPort(zkPort)
                        .shouldStartZK(true)
+                       .zkTimeoutSec(1000)
                        .build();
-                localDLMEmulator.start();
+
+                    localDLMEmulator.start();
             } else {
                 // Start LocalBookKeeper
                 bkEnsemble = new LocalBookkeeperEnsemble(numOfBk, zkPort, bkPort, zkDir, bkDir, wipeData);
@@ -178,6 +166,8 @@ public class PulsarStandaloneStarter {
 
         // load aspectj-weaver agent for instrumentation
         AgentLoader.loadAgentClass(Agent.class.getName(), null);
+
+        log.info("Begin start up Pulsar Service");
 
         // Start Broker
         broker = new PulsarService(config);
@@ -222,10 +212,31 @@ public class PulsarStandaloneStarter {
 
         log.debug("--- setup completed ---");
     }
+    public void close(){
+        try {
+            if (broker != null) {
+                broker.close();
+            }
 
+            if (bkEnsemble != null) {
+                bkEnsemble.stop();
+            }
+            if (localDLMEmulator != null) {
+                localDLMEmulator.teardown();
+            }
+
+        } catch (Exception e) {
+            log.error("Shutdown failed: {}", e.getMessage());
+        }
+    }
+    //handle standalone start up exception
     public static void main(String args[]) throws Exception {
         // Start standalone
         PulsarStandaloneStarter standalone = new PulsarStandaloneStarter(args);
-        standalone.start();
+        try{
+            standalone.start();
+        } catch (Exception e){
+            standalone.close();
+        }
     }
 }
