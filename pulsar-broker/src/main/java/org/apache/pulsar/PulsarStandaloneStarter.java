@@ -20,10 +20,15 @@ package org.apache.pulsar;
 
 import static org.apache.commons.lang3.StringUtils.isBlank;
 
+import java.io.File;
 import java.io.FileInputStream;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
 
+import org.apache.commons.io.FileUtils;
 import org.apache.distributedlog.LocalDLMEmulator;
+import org.apache.distributedlog.admin.DistributedLogAdmin;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.pulsar.broker.ServiceConfigurationUtils;
@@ -44,6 +49,11 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 
 public class PulsarStandaloneStarter {
+    static {
+        // org.apache.zookeeper.test.ClientBase uses FourLetterWordMain, from 3.5.3 four letter words
+        // are disabled by default due to security reasons
+        System.setProperty("zookeeper.4lw.commands.whitelist", "*");
+    }
 
     PulsarService broker;
     PulsarAdmin admin;
@@ -51,6 +61,8 @@ public class PulsarStandaloneStarter {
     LocalDLMEmulator localDLMEmulator;
     ServiceConfiguration config;
     int mlType;
+    private final List<File> tmpDirs = new ArrayList<File>();
+
 
     @Parameter(names = { "-c", "--config" }, description = "Configuration file path", required = true)
     private String configFile;
@@ -59,7 +71,7 @@ public class PulsarStandaloneStarter {
     private boolean wipeData = false;
 
     @Parameter(names = { "--num-bookies" }, description = "Number of local Bookies")
-    private int numOfBk = 1;
+    private int numOfBk = 3;
 
     @Parameter(names = { "--zookeeper-port" }, description = "Local zookeeper's port")
     private int zkPort = 2181;
@@ -142,17 +154,22 @@ public class PulsarStandaloneStarter {
 
         if (!onlyBroker) {
             if(mlType == 1) {
-                //when start zk in localBk, should set this larger, or it will throw
-                // java.lang.Exception: Error starting zookeeper/bookkeeper, although it can start zk
                 localDLMEmulator = LocalDLMEmulator.newBuilder()
                        .numBookies(numOfBk)
                        .zkHost("127.0.0.1")
                        .zkPort(zkPort)
                        .shouldStartZK(true)
-                       .zkTimeoutSec(1000)
+                        .zkTimeoutSec(100)
                        .build();
+                localDLMEmulator.start();
+                log.info("start localDLMEmulator is finished");
 
-                    localDLMEmulator.start();
+//          bind command: dlog admin bind -l /ledgers -s 127.0.0.1:2181 -c distributedlog://127.0.0.1:7000/messaging/my_namespace
+                // bind namespace admin is a tool, bind is a cmd
+                String bindOpts[] = "bind -l /ledgers -s 127.0.0.1:2181 -c distributedlog://127.0.0.1:2181/default_namespace".split(" ");
+                DistributedLogAdmin admin = new DistributedLogAdmin();
+                admin.run(bindOpts);
+
             } else {
                 // Start LocalBookKeeper
                 bkEnsemble = new LocalBookkeeperEnsemble(numOfBk, zkPort, bkPort, zkDir, bkDir, wipeData);
@@ -167,7 +184,6 @@ public class PulsarStandaloneStarter {
         // load aspectj-weaver agent for instrumentation
         AgentLoader.loadAgentClass(Agent.class.getName(), null);
 
-        log.info("Begin start up Pulsar Service");
 
         // Start Broker
         broker = new PulsarService(config);
@@ -223,6 +239,10 @@ public class PulsarStandaloneStarter {
             }
             if (localDLMEmulator != null) {
                 localDLMEmulator.teardown();
+            }
+
+            for (File dir : tmpDirs) {
+                FileUtils.forceDeleteOnExit(dir);
             }
 
         } catch (Exception e) {
