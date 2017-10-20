@@ -51,12 +51,12 @@ class DlogBasedManagedCursorContainer implements Iterable<ManagedCursor> {
 
     private static class Item {
         final ManagedCursor cursor;
-        DlogBasedPosition position;
+        PositionImpl position;
         int idx;
 
         Item(ManagedCursor cursor, int idx) {
             this.cursor = cursor;
-            this.position = (DlogBasedPosition) cursor.getMarkDeletedPosition();
+            this.position = (PositionImpl) cursor.getMarkDeletedPosition();
             this.idx = idx;
         }
     }
@@ -114,7 +114,7 @@ class DlogBasedManagedCursorContainer implements Iterable<ManagedCursor> {
      * @return a pair of positions, representing the previous slowest consumer and the new slowest consumer (after the
      *         update).
      */
-    public Pair<DlogBasedPosition, DlogBasedPosition> cursorUpdated(ManagedCursor cursor, Position newPosition) {
+    public Pair<PositionImpl, PositionImpl> cursorUpdated(ManagedCursor cursor, Position newPosition) {
         checkNotNull(cursor);
 
         long stamp = rwLock.writeLock();
@@ -124,19 +124,19 @@ class DlogBasedManagedCursorContainer implements Iterable<ManagedCursor> {
                 return null;
             }
 
-            DlogBasedPosition previousSlowestConsumer = heap.get(0).position;
+            PositionImpl previousSlowestConsumer = heap.get(0).position;
 
             // When the cursor moves forward, we need to push it toward the
             // bottom of the tree and push it up if a reset was done
 
-            item.position = (DlogBasedPosition) newPosition;
+            item.position = (PositionImpl) newPosition;
             if (item.idx == 0 || getParent(item).position.compareTo(item.position) <= 0) {
                 siftDown(item);
             } else {
                 siftUp(item);
             }
 
-            DlogBasedPosition newSlowestConsumer = heap.get(0).position;
+            PositionImpl newSlowestConsumer = heap.get(0).position;
             return Pair.create(previousSlowestConsumer, newSlowestConsumer);
         } finally {
             rwLock.unlockWrite(stamp);
@@ -148,7 +148,7 @@ class DlogBasedManagedCursorContainer implements Iterable<ManagedCursor> {
      *
      * @return the slowest reader position
      */
-    public DlogBasedPosition getSlowestReaderPosition() {
+    public PositionImpl getSlowestReaderPosition() {
         long stamp = rwLock.readLock();
         try {
             return heap.isEmpty() ? null : heap.get(0).position;

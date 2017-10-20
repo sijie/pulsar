@@ -36,7 +36,7 @@ import org.apache.bookkeeper.mledger.Entry;
 import org.apache.bookkeeper.mledger.ManagedCursor;
 import org.apache.bookkeeper.mledger.ManagedLedger;
 import org.apache.bookkeeper.mledger.ManagedLedgerException;
-import org.apache.bookkeeper.mledger.Position;
+import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.admin.AdminResource;
 import org.apache.pulsar.broker.service.Topic.PublishContext;
@@ -318,7 +318,7 @@ public class MessageDeduplication {
     /**
      * Call this method whenever a message is persisted to get the chance to trigger a snapshot
      */
-    public void recordMessagePersisted(PublishContext publishContext, Position position) {
+    public void recordMessagePersisted(PublishContext publishContext, PositionImpl position) {
         if (!isEnabled()) {
             return;
         }
@@ -338,7 +338,7 @@ public class MessageDeduplication {
         }
     }
 
-    private void takeSnapshot(Position position) {
+    private void takeSnapshot(PositionImpl position) {
         if (log.isDebugEnabled()) {
             log.debug("[{}] Taking snapshot of sequence ids map", topic.getName());
         }

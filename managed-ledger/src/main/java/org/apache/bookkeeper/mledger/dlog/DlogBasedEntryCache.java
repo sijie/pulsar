@@ -59,7 +59,7 @@ public interface DlogBasedEntryCache extends Comparable<DlogBasedEntryCache> {
      * @param lastPosition
      *            the position of the last entry to be invalidated (inclusive)
      */
-    void invalidateEntries(DlogBasedPosition lastPosition);
+    void invalidateEntries(PositionImpl lastPosition);
 
     /**
      * Remove from the cache all the entries belonging to a specific log segment
@@ -117,7 +117,7 @@ public interface DlogBasedEntryCache extends Comparable<DlogBasedEntryCache> {
      * @param ctx
      *            the context object
      */
-    void asyncReadEntry(DlogBasedPosition position, ReadEntryCallback callback, Object ctx);
+    void asyncReadEntry(PositionImpl position, ReadEntryCallback callback, Object ctx);
 
     /**
      * Get the total size in bytes of all the entries stored in this cache

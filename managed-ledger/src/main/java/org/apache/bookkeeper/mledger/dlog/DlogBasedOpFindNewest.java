@@ -26,13 +26,13 @@ import org.apache.bookkeeper.mledger.ManagedLedgerException;
 import org.apache.bookkeeper.mledger.Position;
 import org.apache.bookkeeper.mledger.dlog.DlogBasedManagedCursor;
 import org.apache.bookkeeper.mledger.dlog.DlogBasedManagedLedger.PositionBound;
-import org.apache.bookkeeper.mledger.dlog.DlogBasedPosition;
+import org.apache.bookkeeper.mledger.impl.PositionImpl;
 
 /**
  */
 public class DlogBasedOpFindNewest implements ReadEntryCallback {
     private final DlogBasedManagedCursor cursor;
-    private final DlogBasedPosition startPosition;
+    private final PositionImpl startPosition;
     private final FindEntryCallback callback;
     private final Predicate<Entry> condition;
     private final Object ctx;
@@ -41,13 +41,13 @@ public class DlogBasedOpFindNewest implements ReadEntryCallback {
         checkFirst, checkLast, searching
     }
 
-    DlogBasedPosition searchPosition;
+    PositionImpl searchPosition;
     long min;
     long max;
     Position lastMatchedPosition = null;
     State state;
 
-    public DlogBasedOpFindNewest(DlogBasedManagedCursor cursor, DlogBasedPosition startPosition, Predicate<Entry> condition,
+    public DlogBasedOpFindNewest(DlogBasedManagedCursor cursor, PositionImpl startPosition, Predicate<Entry> condition,
                                  long numberOfEntries, FindEntryCallback callback, Object ctx) {
         this.cursor = cursor;
         this.startPosition = startPosition;

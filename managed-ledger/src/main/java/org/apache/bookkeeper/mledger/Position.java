@@ -32,8 +32,4 @@ public interface Position {
      * @return the position of the next logical entry
      */
     Position getNext();
-
-    long getLedgerId();
-
-    long getEntryId();
 }

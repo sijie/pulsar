@@ -11,6 +11,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
  * LogSegmentSequenceNo-> ledgerId(bk), EntryId -> EntryId(pulsar)
  *
  */
+@Deprecated // after refactor
 public class DlogBasedPosition implements Position, Comparable<DlogBasedPosition>{
     private DLSN dlsn;
 

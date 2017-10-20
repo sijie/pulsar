@@ -8,6 +8,7 @@ import io.netty.util.Recycler;
 import io.netty.util.ReferenceCounted;
 import org.apache.bookkeeper.mledger.Entry;
 import org.apache.bookkeeper.mledger.Position;
+import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.distributedlog.DLSN;
 import org.apache.distributedlog.LogRecordWithDLSN;
 
@@ -61,7 +62,7 @@ final class DlogBasedEntry extends AbstractReferenceCounted implements Entry, Co
         return entry;
     }
 
-    public static DlogBasedEntry create(DlogBasedPosition position, ByteBuf data) {
+    public static DlogBasedEntry create(PositionImpl position, ByteBuf data) {
         DlogBasedEntry entry = RECYCLER.get();
         entry.dlsn = position.getDlsn();
         entry.data = data;
@@ -120,7 +121,7 @@ final class DlogBasedEntry extends AbstractReferenceCounted implements Entry, Co
 
     @Override
     public Position getPosition() {
-        return new DlogBasedPosition(dlsn);
+        return new PositionImpl(dlsn);
     }
 
     //todo remove getLedgerId and getEntryId in Entry

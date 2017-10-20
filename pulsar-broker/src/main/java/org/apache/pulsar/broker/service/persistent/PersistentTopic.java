@@ -240,10 +240,11 @@ public class PersistentTopic implements Topic, AddEntryCallback {
     @Override
     public void addComplete(Position pos, Object ctx) {
         PublishContext publishContext = (PublishContext) ctx;
+        PositionImpl position = (PositionImpl) pos;
 
         // Message has been successfully persisted
-        messageDeduplication.recordMessagePersisted(publishContext, pos);
-        publishContext.completed(null, pos.getLedgerId(), pos.getEntryId());
+        messageDeduplication.recordMessagePersisted(publishContext, position);
+        publishContext.completed(null, position.getLedgerId(), position.getEntryId());
     }
 
     @Override

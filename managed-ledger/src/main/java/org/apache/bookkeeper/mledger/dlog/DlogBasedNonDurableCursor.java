@@ -24,10 +24,7 @@ import dlshade.org.apache.bookkeeper.client.BookKeeper;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.CloseCallback;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.DeleteCursorCallback;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.MarkDeleteCallback;
-import org.apache.bookkeeper.mledger.ManagedLedgerConfig;
-import org.apache.bookkeeper.mledger.dlog.DlogBasedManagedCursor;
-import org.apache.bookkeeper.mledger.dlog.DlogBasedManagedLedger;
-import org.apache.bookkeeper.mledger.dlog.DlogBasedPosition;
+import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.bookkeeper.mledger.util.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,13 +34,13 @@ import java.util.Map;
 public class DlogBasedNonDurableCursor extends DlogBasedManagedCursor {
 
     DlogBasedNonDurableCursor(BookKeeper bookkeeper, DlogBasedManagedLedgerConfig config, DlogBasedManagedLedger ledger, String cursorName,
-                              DlogBasedPosition startCursorPosition) {
+                              PositionImpl startCursorPosition) {
         super(bookkeeper, config, ledger, cursorName);
 
-        if (startCursorPosition == null || startCursorPosition.equals(DlogBasedPosition.latest)) {
+        if (startCursorPosition == null || startCursorPosition.equals(PositionImpl.latest)) {
             // Start from last entry
             initializeCursorPosition(ledger.getLastPositionAndCounter());
-        } else if (startCursorPosition.equals(DlogBasedPosition.earliest)) {
+        } else if (startCursorPosition.equals(PositionImpl.earliest)) {
             // Start from invalid ledger to read from first available entry
             recoverCursor(ledger.getPreviousPosition(ledger.getFirstPosition()));
         } else {
@@ -56,8 +53,8 @@ public class DlogBasedNonDurableCursor extends DlogBasedManagedCursor {
                 readPosition, markDeletePosition);
     }
 
-    private void recoverCursor(DlogBasedPosition mdPosition) {
-        Pair<DlogBasedPosition, Long> lastEntryAndCounter = ledger.getLastPositionAndCounter();
+    private void recoverCursor(PositionImpl mdPosition) {
+        Pair<PositionImpl, Long> lastEntryAndCounter = ledger.getLastPositionAndCounter();
         this.readPosition = ledger.getNextValidPosition(mdPosition);
         markDeletePosition = mdPosition;
 
@@ -81,7 +78,7 @@ public class DlogBasedNonDurableCursor extends DlogBasedManagedCursor {
     }
 
     @Override
-    protected void internalAsyncMarkDelete(final DlogBasedPosition newPosition, Map<String, Long> properties,
+    protected void internalAsyncMarkDelete(final PositionImpl newPosition, Map<String, Long> properties,
                                            final MarkDeleteCallback callback, final Object ctx) {
         // Bypass persistence of mark-delete position and individually deleted messages info
         callback.markDeleteComplete(ctx);
