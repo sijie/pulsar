@@ -26,6 +26,7 @@ import org.apache.bookkeeper.mledger.proto.MLDataFormats.PositionInfo;
 
 import com.google.common.base.Objects;
 import com.google.common.collect.ComparisonChain;
+import org.apache.distributedlog.DLSN;
 
 public class PositionImpl implements Position, Comparable<PositionImpl> {
 
@@ -48,6 +49,11 @@ public class PositionImpl implements Position, Comparable<PositionImpl> {
     public PositionImpl(long ledgerId, long entryId) {
         this.ledgerId = ledgerId;
         this.entryId = entryId;
+    }
+    public PositionImpl(DLSN dlsn){
+        checkNotNull(dlsn);
+        this.ledgerId = dlsn.getLogSegmentSequenceNo();
+        this.entryId = dlsn.getEntryId();
     }
 
     public PositionImpl(PositionImpl other) {
@@ -109,5 +115,13 @@ public class PositionImpl implements Position, Comparable<PositionImpl> {
 
     public PositionInfo getPositionInfo() {
         return PositionInfo.newBuilder().setLedgerId(ledgerId).setEntryId(entryId).build();
+    }
+
+    public DLSN getDlsn() {
+        return new DLSN(ledgerId, entryId, 0);
+    }
+
+    public static PositionImpl get(DLSN dlsn) {
+        return new PositionImpl(dlsn.getLogSegmentSequenceNo(),dlsn.getEntryId());
     }
 }

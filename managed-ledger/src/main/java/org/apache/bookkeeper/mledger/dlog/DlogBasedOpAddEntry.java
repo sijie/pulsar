@@ -6,6 +6,7 @@ import io.netty.util.Recycler;
 import io.netty.util.Recycler.Handle;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.AddEntryCallback;
 import org.apache.bookkeeper.mledger.ManagedLedgerException;
+import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.bookkeeper.util.SafeRunnable;
 import org.apache.distributedlog.DLSN;
 import org.apache.distributedlog.LogRecord;
@@ -99,7 +100,7 @@ class DlogBasedOpAddEntry extends SafeRunnable implements FutureEventListener<DL
 
         // We are done using the byte buffer
         data.release();
-        DlogBasedPosition lastEntry = DlogBasedPosition.get(dlsn);
+        PositionImpl lastEntry = PositionImpl.get(dlsn);
         DlogBasedManagedLedger.ENTRIES_ADDED_COUNTER_UPDATER.incrementAndGet(ml);
         ml.lastConfirmedEntry = lastEntry;
 

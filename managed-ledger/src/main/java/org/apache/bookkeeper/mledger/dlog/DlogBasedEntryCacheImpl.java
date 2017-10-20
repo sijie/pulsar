@@ -62,7 +62,7 @@ public class DlogBasedEntryCacheImpl implements DlogBasedEntryCache {
     private final DlogBasedEntryCacheManager manager;
     private DistributedLogManager distributedLogManager;
     private final DlogBasedManagedLedger ml;
-    private final RangeCache<DlogBasedPosition, DlogBasedEntry> entries;
+    private final RangeCache<PositionImpl, DlogBasedEntry> entries;
     private final long READTIMEOUT = 1000;
     private static final double MB = 1024 * 1024;
 
@@ -76,7 +76,7 @@ public class DlogBasedEntryCacheImpl implements DlogBasedEntryCache {
     public DlogBasedEntryCacheImpl(DlogBasedEntryCacheManager manager, DlogBasedManagedLedger ml) {
         this.manager = manager;
         this.ml = ml;
-        this.entries = new RangeCache<DlogBasedPosition, DlogBasedEntry>(entryWeighter);
+        this.entries = new RangeCache<PositionImpl, DlogBasedEntry>(entryWeighter);
 
         if (log.isDebugEnabled()) {
             log.debug("[{}] Initialized managed-ledger entry cache", ml.getName());
@@ -137,7 +137,7 @@ public class DlogBasedEntryCacheImpl implements DlogBasedEntryCache {
             entryBuf.readerIndex(readerIdx);
         }
 
-        DlogBasedPosition position = (DlogBasedPosition)entry.getPosition();
+        PositionImpl position = (PositionImpl)entry.getPosition();
         DlogBasedEntry cacheEntry = DlogBasedEntry.create(position, cachedData);
         cachedData.release();
         if (entries.put(position, cacheEntry)) {
@@ -151,9 +151,9 @@ public class DlogBasedEntryCacheImpl implements DlogBasedEntryCache {
     }
 
     @Override
-    public void invalidateEntries(final DlogBasedPosition lastPosition) {
+    public void invalidateEntries(final PositionImpl lastPosition) {
         //todo reconstruct position's get func
-        final DlogBasedPosition firstPosition = DlogBasedPosition.get(-1, 0, 0);
+        final PositionImpl firstPosition = PositionImpl.get(-1, 0);
 
         Pair<Integer, Long> removed = entries.removeRange(firstPosition, lastPosition, true);
         int entriesRemoved = removed.first;
@@ -168,8 +168,8 @@ public class DlogBasedEntryCacheImpl implements DlogBasedEntryCache {
 
     @Override
     public void invalidateAllEntries(long ledgerId) {
-        final DlogBasedPosition firstPosition = DlogBasedPosition.get(ledgerId, 0);
-        final DlogBasedPosition lastPosition = DlogBasedPosition.get(ledgerId + 1, 0);
+        final PositionImpl firstPosition = PositionImpl.get(ledgerId, 0);
+        final PositionImpl lastPosition = PositionImpl.get(ledgerId + 1, 0);
 
         Pair<Integer, Long> removed = entries.removeRange(firstPosition, lastPosition, false);
         int entriesRemoved = removed.first;
@@ -183,7 +183,7 @@ public class DlogBasedEntryCacheImpl implements DlogBasedEntryCache {
     }
 
     @Override
-    public void asyncReadEntry(DlogBasedPosition position, final ReadEntryCallback callback,
+    public void asyncReadEntry(PositionImpl position, final ReadEntryCallback callback,
                                final Object ctx) {
         if (log.isDebugEnabled()) {
             log.debug("[{}] Reading entry(id:{}) in asyncReadEntry of cache", ml.getName(), position.getEntryId());
@@ -237,8 +237,8 @@ public class DlogBasedEntryCacheImpl implements DlogBasedEntryCache {
     public void asyncReadEntry(long logSegNo, long firstEntry, long lastEntry, boolean isSlowestReader,
                                final ReadEntriesCallback callback, Object ctx) {
         final int entriesToRead = (int) (lastEntry - firstEntry) + 1;
-        final DlogBasedPosition firstPosition = DlogBasedPosition.get(logSegNo,firstEntry);
-        final DlogBasedPosition lastPosition = DlogBasedPosition.get(logSegNo,lastEntry);
+        final PositionImpl firstPosition = PositionImpl.get(logSegNo,firstEntry);
+        final PositionImpl lastPosition = PositionImpl.get(logSegNo,lastEntry);
 
         if (log.isDebugEnabled()) {
             log.debug("[{}] Reading entries range : {} to {} in asyncReadEntries of cache", ml.getName(), firstEntry, lastEntry);

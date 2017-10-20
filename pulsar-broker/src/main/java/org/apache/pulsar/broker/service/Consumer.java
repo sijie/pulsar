@@ -258,7 +258,7 @@ public class Consumer {
                 continue;
             }
             if (pendingAcks != null) {
-                pendingAcks.put(((PositionImpl)entry.getPosition()).getLedgerId(), entry.getEntryId(), batchSize, 0);
+                pendingAcks.put(entry.getLedgerId(), entry.getEntryId(), batchSize, 0);
             }
             // check if consumer supports batch message
             if (batchSize > 1 && !clientSupportBatchMessages) {

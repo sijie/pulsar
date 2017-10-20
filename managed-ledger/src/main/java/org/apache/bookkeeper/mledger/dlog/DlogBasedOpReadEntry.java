@@ -38,16 +38,16 @@ import static org.apache.bookkeeper.mledger.util.SafeRun.safeRun;
 public class DlogBasedOpReadEntry implements ReadEntriesCallback {
 
     DlogBasedManagedCursor cursor;
-    DlogBasedPosition readPosition;
+    PositionImpl readPosition;
     private int count;
     private ReadEntriesCallback callback;
     Object ctx;
 
     // Results
     private List<Entry> entries;
-    private DlogBasedPosition nextReadPosition;
+    private PositionImpl nextReadPosition;
 
-    public static DlogBasedOpReadEntry create(DlogBasedManagedCursor cursor, DlogBasedPosition readPositionRef, int count,
+    public static DlogBasedOpReadEntry create(DlogBasedManagedCursor cursor, PositionImpl readPositionRef, int count,
                                               ReadEntriesCallback callback, Object ctx) {
         DlogBasedOpReadEntry op = RECYCLER.get();
         op.readPosition = cursor.ledger.startReadOperationOnLedger(readPositionRef);
@@ -56,7 +56,7 @@ public class DlogBasedOpReadEntry implements ReadEntriesCallback {
         op.callback = callback;
         op.entries = Lists.newArrayList();
         op.ctx = ctx;
-        op.nextReadPosition = DlogBasedPosition.get(op.readPosition);
+        op.nextReadPosition = PositionImpl.get(op.readPosition);
         return op;
     }
 
@@ -64,7 +64,7 @@ public class DlogBasedOpReadEntry implements ReadEntriesCallback {
     public void readEntriesComplete(List<Entry> returnedEntries, Object ctx) {
         // Filter the returned entries for individual deleted messages
         int entriesSize = returnedEntries.size();
-        final DlogBasedPosition lastPosition = (DlogBasedPosition) returnedEntries.get(entriesSize - 1).getPosition();
+        final PositionImpl lastPosition = (PositionImpl) returnedEntries.get(entriesSize - 1).getPosition();
         if (log.isDebugEnabled()) {
             log.debug("[{}][{}] Read entries succeeded batch_size={} cumulative_size={} requested_count={}",
                     cursor.ledger.getName(), cursor.getName(), returnedEntries.size(), entries.size(), count);
@@ -107,7 +107,7 @@ public class DlogBasedOpReadEntry implements ReadEntriesCallback {
     }
 
     void updateReadPosition(Position newReadPosition) {
-        nextReadPosition = (DlogBasedPosition) newReadPosition;
+        nextReadPosition = (PositionImpl) newReadPosition;
         cursor.setReadPosition(nextReadPosition);
     }
 

@@ -186,7 +186,7 @@ public class DlogBasedEntryCacheManager {
         }
 
         @Override
-        public void invalidateEntries(DlogBasedPosition lastPosition) {
+        public void invalidateEntries(PositionImpl lastPosition) {
         }
 
         @Override
@@ -243,7 +243,7 @@ public class DlogBasedEntryCacheManager {
         }
 
         @Override
-        public void asyncReadEntry(DlogBasedPosition position, AsyncCallbacks.ReadEntryCallback callback, Object ctx) {
+        public void asyncReadEntry(PositionImpl position, AsyncCallbacks.ReadEntryCallback callback, Object ctx) {
             try {
                 AsyncLogReader logReader = distributedLogManager.getAsyncLogReader(position.getDlsn());
                 logReader.readNext().whenComplete(new FutureEventListener<LogRecordWithDLSN>() {

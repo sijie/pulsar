@@ -47,6 +47,7 @@ import org.apache.bookkeeper.mledger.impl.MetaStore;
 import org.apache.bookkeeper.mledger.impl.MetaStore.MetaStoreCallback;
 import org.apache.bookkeeper.mledger.impl.MetaStore.Stat;
 import org.apache.bookkeeper.mledger.impl.MetaStoreImplZookeeper;
+import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats.ManagedLedgerInfo;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats.ManagedLedgerInfo.LedgerInfo;
 import org.apache.bookkeeper.mledger.util.Pair;
@@ -506,8 +507,8 @@ public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
         assertEquals(entries.size(), 11);
         assertEquals(cursor.hasMoreEntries(), false);
 
-        DlogBasedPosition first = (DlogBasedPosition) entries.get(0).getPosition();
-        DlogBasedPosition last = (DlogBasedPosition) entries.get(entries.size() - 1).getPosition();
+        PositionImpl first = (PositionImpl) entries.get(0).getPosition();
+        PositionImpl last = (PositionImpl) entries.get(entries.size() - 1).getPosition();
         entries.forEach(e -> e.release());
 
         log.info("First={} Last={}", first, last);
@@ -545,8 +546,8 @@ public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
         assertEquals(entries.size(), 3);
         assertEquals(cursor.hasMoreEntries(), false);
 
-        DlogBasedPosition first = (DlogBasedPosition) entries.get(0).getPosition();
-        DlogBasedPosition last = (DlogBasedPosition) entries.get(entries.size() - 1).getPosition();
+        PositionImpl first = (PositionImpl) entries.get(0).getPosition();
+        PositionImpl last = (PositionImpl) entries.get(entries.size() - 1).getPosition();
         entries.forEach(e -> e.release());
 
         // Read again, from next ledger id
@@ -624,10 +625,10 @@ public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
 
         assertEquals(ledger.getTotalSize(), 8);
 
-        DlogBasedPosition p2 = (DlogBasedPosition) ledger.addEntry(new byte[12], 2, 5);
+        PositionImpl p2 = (PositionImpl) ledger.addEntry(new byte[12], 2, 5);
 
         assertEquals(ledger.getTotalSize(), 13);
-        c1.markDelete(new DlogBasedPosition(p2.getLedgerId(), -1, -1));
+        c1.markDelete(new PositionImpl(p2.getLedgerId(), -1));
 
         // Wait for background trimming
         Thread.sleep(400);
@@ -684,7 +685,7 @@ public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
 
         Position p0 = cursor.getMarkDeletedPosition();
         // This is expected because p0 is already an "invalid" position (since no entry has been mark-deleted yet)
-        assertEquals(ledger.getPreviousPosition((DlogBasedPosition) p0), p0);
+        assertEquals(ledger.getPreviousPosition((PositionImpl) p0), p0);
 
         // Force to close an empty ledger
         ledger.close();
@@ -696,8 +697,8 @@ public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
 
         ledger = (DlogBasedManagedLedger) factory.open("my_test_ledger",
                 new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(2));
-        DlogBasedPosition pBeforeWriting = ledger.getLastPosition();
-        DlogBasedPosition p1 = (DlogBasedPosition) ledger.addEntry("entry".getBytes());
+        PositionImpl pBeforeWriting = ledger.getLastPosition();
+        PositionImpl p1 = (PositionImpl) ledger.addEntry("entry".getBytes());
         ledger.close();
 
         ledger = (DlogBasedManagedLedger) factory.open("my_test_ledger",
@@ -707,9 +708,9 @@ public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
         Position p4 = ledger.addEntry("entry".getBytes());
 
         assertEquals(ledger.getPreviousPosition(p1), pBeforeWriting);
-        assertEquals(ledger.getPreviousPosition((DlogBasedPosition) p2), p1);
-        assertEquals(ledger.getPreviousPosition((DlogBasedPosition) p3), p2);
-        assertEquals(ledger.getPreviousPosition((DlogBasedPosition) p4), p3);
+        assertEquals(ledger.getPreviousPosition((PositionImpl) p2), p1);
+        assertEquals(ledger.getPreviousPosition((PositionImpl) p3), p2);
+        assertEquals(ledger.getPreviousPosition((PositionImpl) p4), p3);
     }
      @Test
     public void testRetention() throws Exception {
@@ -1398,7 +1399,7 @@ public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
 //    public void deleteWithErrors1() throws Exception {
 //        ManagedLedger ledger = factory.open("my_test_ledger");
 //
-//        DlogBasedPosition position = (DlogBasedPosition) ledger.addEntry("dummy-entry-1".getBytes(Encoding));
+//        PositionImpl position = (PositionImpl) ledger.addEntry("dummy-entry-1".getBytes(Encoding));
 //        assertEquals(ledger.getNumberOfEntries(), 1);
 //
 //        // Force delete a ledger and test that deleting the ML still happens
@@ -1656,10 +1657,10 @@ public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
         DlogBasedManagedCursor c1 = (DlogBasedManagedCursor) ledger.openCursor("c1");
         DlogBasedManagedCursor c2 = (DlogBasedManagedCursor) ledger.openCursor("c2");
 
-        DlogBasedPosition p1 = (DlogBasedPosition) ledger.addEntry("entry-1".getBytes());
-        DlogBasedPosition p2 = (DlogBasedPosition) ledger.addEntry("entry-2".getBytes());
-        DlogBasedPosition p3 = (DlogBasedPosition) ledger.addEntry("entry-3".getBytes());
-        DlogBasedPosition p4 = (DlogBasedPosition) ledger.addEntry("entry-4".getBytes());
+        PositionImpl p1 = (PositionImpl) ledger.addEntry("entry-1".getBytes());
+        PositionImpl p2 = (PositionImpl) ledger.addEntry("entry-2".getBytes());
+        PositionImpl p3 = (PositionImpl) ledger.addEntry("entry-3".getBytes());
+        PositionImpl p4 = (PositionImpl) ledger.addEntry("entry-4".getBytes());
 
         assertEquals(entryCache.getSize(), 7 * 4);
         assertEquals(cacheManager.getSize(), entryCache.getSize());
@@ -1933,13 +1934,13 @@ public class DlogBasedManagedLedgerTest extends TestDistributedLogBase {
         DlogBasedManagedLedger ledger = (DlogBasedManagedLedger) factory.open("testGetNextValidPosition", conf);
         ManagedCursor c1 = ledger.openCursor("c1");
 
-        DlogBasedPosition p1 = (DlogBasedPosition) ledger.addEntry("entry1".getBytes());
-        DlogBasedPosition p2 = (DlogBasedPosition) ledger.addEntry("entry2".getBytes());
-        DlogBasedPosition p3 = (DlogBasedPosition) ledger.addEntry("entry3".getBytes());
+        PositionImpl p1 = (PositionImpl) ledger.addEntry("entry1".getBytes());
+        PositionImpl p2 = (PositionImpl) ledger.addEntry("entry2".getBytes());
+        PositionImpl p3 = (PositionImpl) ledger.addEntry("entry3".getBytes());
 
-        assertEquals(ledger.getNextValidPosition((DlogBasedPosition) c1.getMarkDeletedPosition()), p1);
+        assertEquals(ledger.getNextValidPosition((PositionImpl) c1.getMarkDeletedPosition()), p1);
         assertEquals(ledger.getNextValidPosition(p1), p2);
-        assertEquals(ledger.getNextValidPosition(p3), DlogBasedPosition.get(p3.getLedgerId(), p3.getEntryId() + 1));
+        assertEquals(ledger.getNextValidPosition(p3), PositionImpl.get(p3.getLedgerId(), p3.getEntryId() + 1));
     }
 
     /**

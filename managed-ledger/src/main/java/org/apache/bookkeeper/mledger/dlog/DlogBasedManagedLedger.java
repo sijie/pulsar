@@ -29,6 +29,7 @@ import org.apache.bookkeeper.mledger.dlog.DlogBasedManagedCursor.VoidCallback;
 import org.apache.bookkeeper.mledger.impl.MetaStore;
 import org.apache.bookkeeper.mledger.impl.MetaStore.MetaStoreCallback;
 import org.apache.bookkeeper.mledger.impl.MetaStore.Stat;
+import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats.ManagedLedgerInfo;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats.ManagedLedgerInfo.LedgerInfo;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats.NestedPositionInfo;
@@ -38,11 +39,8 @@ import org.apache.bookkeeper.mledger.util.Pair;
 import org.apache.bookkeeper.util.OrderedSafeExecutor;
 import org.apache.bookkeeper.util.UnboundArrayBlockingQueue;
 import org.apache.distributedlog.BookKeeperClient;
-import org.apache.distributedlog.DLSN;
 import org.apache.distributedlog.DistributedLogConfiguration;
-import org.apache.distributedlog.LogRecord;
 import org.apache.distributedlog.LogSegmentMetadata;
-import org.apache.distributedlog.api.AsyncLogReader;
 import org.apache.distributedlog.api.AsyncLogWriter;
 import org.apache.distributedlog.api.DistributedLogManager;
 import org.apache.distributedlog.api.LogReader;
@@ -65,7 +63,6 @@ import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Optional;
 import java.util.Queue;
-import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -139,9 +136,9 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
     private long lastLedgerCreatedTimestamp = 0;
     private long lastLedgerCreationFailureTimestamp = -1;
 
-    volatile DlogBasedPosition lastConfirmedEntry;
+    volatile PositionImpl lastConfirmedEntry;
     // update slowest consuming position
-    private DlogBasedPosition slowestPosition = null;
+    private PositionImpl slowestPosition = null;
 
     enum State {
         None, // Uninitialized
@@ -229,7 +226,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
                 ledgersStat = stat;
                 if (mlInfo.hasTerminatedPosition()) {
                     state = State.Terminated;
-                    lastConfirmedEntry = new DlogBasedPosition(mlInfo.getTerminatedPosition());
+                    lastConfirmedEntry = new PositionImpl(mlInfo.getTerminatedPosition());
                     log.info("[{}] Recovering managed ledger terminated at {}", name, lastConfirmedEntry);
                 }
                 initializeLogWriter(callback);
@@ -345,11 +342,11 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
 
         try{
             log.info("before getLastDLSN");
-            lastConfirmedEntry = new DlogBasedPosition(dlm.getLastDLSN());
+            lastConfirmedEntry = new PositionImpl(dlm.getLastDLSN());
             log.info("after getLastDLSN");
         } catch (LogEmptyException lee){
             // the stream has no entry, reset the lastConfirmedEntry
-            lastConfirmedEntry = new DlogBasedPosition(currentLedger,-1,0);
+            lastConfirmedEntry = new PositionImpl(currentLedger,-1);
             // dlog has no logsegment's metadata, the ledgers will be emtpy, in case cursor read fail
             LedgerInfo info = LedgerInfo.newBuilder().setLedgerId(currentLedger)
                     .setTimestamp(System.currentTimeMillis()).build();
@@ -635,7 +632,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
                 cursors.removeCursor(consumerName);
 
                 // Redo invalidation of entries in cache
-                DlogBasedPosition slowestConsumerPosition = cursors.getSlowestReaderPosition();
+                PositionImpl slowestConsumerPosition = cursors.getSlowestReaderPosition();
                 if (slowestConsumerPosition != null) {
                     if (log.isDebugEnabled()) {
                         log.debug("Doing cache invalidation up to {}", slowestConsumerPosition);
@@ -696,7 +693,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
         checkManagedLedgerIsOpen();
         checkFenced();
 
-        return new DlogBasedNonDurableCursor(bookKeeper, config, this, null, (DlogBasedPosition) startCursorPosition);
+        return new DlogBasedNonDurableCursor(bookKeeper, config, this, null, (PositionImpl) startCursorPosition);
     }
 
     @Override
@@ -726,7 +723,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
     @Override
     public long getNumberOfActiveEntries() {
         long totalEntries = getNumberOfEntries();
-        DlogBasedPosition pos = cursors.getSlowestReaderPosition();
+        PositionImpl pos = cursors.getSlowestReaderPosition();
         if (pos == null) {
             // If there are no consumers, there are no active entries
             return 0;
@@ -736,7 +733,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
             return totalEntries - (pos.getEntryId() + 1);
         }
     }
-
+    
     @Override
     public long getTotalSize() {
         return TOTAL_SIZE_UPDATER.get(this);
@@ -758,7 +755,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
             ManagedCursor cursor = cursors.next();
             long backlogEntries = cursor.getNumberOfEntries();
             if (backlogEntries > maxActiveCursorBacklogEntries) {
-                DlogBasedPosition readPosition = (DlogBasedPosition) cursor.getReadPosition();
+                PositionImpl readPosition = (PositionImpl) cursor.getReadPosition();
                 readPosition = isValidPosition(readPosition) ? readPosition : getNextValidPosition(readPosition);
                 if (readPosition == null) {
                     if (log.isDebugEnabled()) {
@@ -806,7 +803,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
     @Override
     public long getEstimatedBacklogSize() {
 
-        DlogBasedPosition pos = getMarkDeletePositionOfSlowestConsumer();
+        PositionImpl pos = getMarkDeletePositionOfSlowestConsumer();
 
         while (true) {
             if (pos == null) {
@@ -882,7 +879,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
             @Override
             public void onSuccess(Void aVoid) {
                 try{
-                    lastConfirmedEntry = new DlogBasedPosition(dlm.getLastDLSN());
+                    lastConfirmedEntry = new PositionImpl(dlm.getLastDLSN());
                 }catch (IOException e){
                     log.info("[{}] Failed getLastDLSN when terminate the  managed ledger", name);
 
@@ -1187,7 +1184,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
         internalRead(dlogBasedOpReadEntry);
     }
 
-    void asyncReadEntry(DlogBasedPosition position, ReadEntryCallback callback, Object ctx) {
+    void asyncReadEntry(PositionImpl position, ReadEntryCallback callback, Object ctx) {
         if (log.isDebugEnabled()) {
             log.debug("[{}] Reading entry {}: {}", name, position.getLedgerId(), position.getEntryId());
         }
@@ -1217,7 +1214,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
 
         if (updateCursorRateLimit.tryAcquire()) {
             if (isCursorActive(cursor)) {
-                final DlogBasedPosition lastReadPosition = DlogBasedPosition.get(ledgerId, lastEntry);
+                final PositionImpl lastReadPosition = PositionImpl.get(ledgerId, lastEntry);
                 discardEntriesFromCache(cursor, lastReadPosition);
             }
         }
@@ -1230,23 +1227,23 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
     }
 
 
-    void discardEntriesFromCache(DlogBasedManagedCursor cursor, DlogBasedPosition newPosition) {
-        Pair<DlogBasedPosition, DlogBasedPosition> pair = activeCursors.cursorUpdated(cursor, newPosition);
+    void discardEntriesFromCache(DlogBasedManagedCursor cursor, PositionImpl newPosition) {
+        Pair<PositionImpl, PositionImpl> pair = activeCursors.cursorUpdated(cursor, newPosition);
         if (pair != null) {
             entryCache.invalidateEntries(pair.second);
         }
     }
 
-    void updateCursor(DlogBasedManagedCursor cursor, DlogBasedPosition newPosition) {
-        Pair<DlogBasedPosition, DlogBasedPosition> pair = cursors.cursorUpdated(cursor, newPosition);
+    void updateCursor(DlogBasedManagedCursor cursor, PositionImpl newPosition) {
+        Pair<PositionImpl, PositionImpl> pair = cursors.cursorUpdated(cursor, newPosition);
         if (pair == null) {
             // Cursor has been removed in the meantime
             trimConsumedLedgersInBackground();
             return;
         }
 
-        DlogBasedPosition previousSlowestReader = pair.first;
-        DlogBasedPosition currentSlowestReader = pair.second;
+        PositionImpl previousSlowestReader = pair.first;
+        PositionImpl currentSlowestReader = pair.second;
 
         if (previousSlowestReader.compareTo(currentSlowestReader) == 0) {
             // The slowest consumer has not changed position. Nothing to do right now
@@ -1259,7 +1256,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
         }
     }
 
-    DlogBasedPosition startReadOperationOnLedger(DlogBasedPosition position) {
+    PositionImpl startReadOperationOnLedger(PositionImpl position) {
         if (log.isDebugEnabled()) {
             log.debug("[{}] original position is {} and ledgers is {} in startReadOperationOnLedger", name, position, ledgers);
         }
@@ -1267,7 +1264,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
         if (ledgerId != position.getLedgerId()) {
             // The ledger pointed by this position does not exist anymore. It was deleted because it was empty. We need
             // to skip on the next available ledger
-            position = new DlogBasedPosition(ledgerId, 0);
+            position = new PositionImpl(ledgerId, 0);
         }
 
         return position;
@@ -1298,7 +1295,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
      * Get the txId for a specific Position, used when trim.
      * return -1 when fail
      */
-    private long getTxId(DlogBasedPosition position){
+    private long getTxId(PositionImpl position){
         LogReader logReader = null;
         try{
             logReader = dlm.openLogReader(position.getDlsn());
@@ -1336,7 +1333,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
                 return;
             }
             if (!cursors.isEmpty()) {
-                DlogBasedPosition slowestReaderPosition = cursors.getSlowestReaderPosition();
+                PositionImpl slowestReaderPosition = cursors.getSlowestReaderPosition();
                 if (slowestReaderPosition != null) {
                     slowestPosition = slowestReaderPosition;
                 } else {
@@ -1480,10 +1477,10 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
      *            the position range
      * @return the count of entries
      */
-    long getNumberOfEntries(Range<DlogBasedPosition> range) {
-        DlogBasedPosition fromPosition = range.lowerEndpoint();
+    long getNumberOfEntries(Range<PositionImpl> range) {
+        PositionImpl fromPosition = range.lowerEndpoint();
         boolean fromIncluded = range.lowerBoundType() == BoundType.CLOSED;
-        DlogBasedPosition toPosition = range.upperEndpoint();
+        PositionImpl toPosition = range.upperEndpoint();
         boolean toIncluded = range.upperBoundType() == BoundType.CLOSED;
 
         if (fromPosition.getLedgerId() == toPosition.getLedgerId()) {
@@ -1528,7 +1525,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
      *            specifies whether or not to include the start position in calculating the distance
      * @return the new position that is n entries ahead
      */
-    DlogBasedPosition getPositionAfterN(final DlogBasedPosition startPosition, long n, PositionBound startRange) {
+    PositionImpl getPositionAfterN(final PositionImpl startPosition, long n, PositionBound startRange) {
         long entriesToSkip = n;
         long currentLedgerId;
         long currentEntryId;
@@ -1538,7 +1535,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
             currentEntryId = startPosition.getEntryId();
         } else {
             // e.g. a mark-delete position
-            DlogBasedPosition nextValidPosition = getNextValidPosition(startPosition);
+            PositionImpl nextValidPosition = getNextValidPosition(startPosition);
             currentLedgerId = nextValidPosition.getLedgerId();
             currentEntryId = nextValidPosition.getEntryId();
         }
@@ -1577,7 +1574,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
             }
         }
 
-        DlogBasedPosition positionToReturn = getPreviousPosition(DlogBasedPosition.get(currentLedgerId, currentEntryId));
+        PositionImpl positionToReturn = getPreviousPosition(PositionImpl.get(currentLedgerId, currentEntryId));
         if (log.isDebugEnabled()) {
             log.debug("getPositionAfterN: Start position {}:{}, startIncluded: {}, Return position {}:{}",
                     startPosition.getLedgerId(), startPosition.getEntryId(), startRange, positionToReturn.getLedgerId(),
@@ -1595,9 +1592,9 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
      *            the current position
      * @return the previous position
      */
-    DlogBasedPosition getPreviousPosition(DlogBasedPosition position) {
+    PositionImpl getPreviousPosition(PositionImpl position) {
         if (position.getEntryId() > 0) {
-            return DlogBasedPosition.get(position.getLedgerId(), position.getEntryId() - 1);
+            return PositionImpl.get(position.getLedgerId(), position.getEntryId() - 1);
         }
 
         // The previous position will be the last position of an earlier ledgers
@@ -1605,19 +1602,19 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
 
         if (headMap.isEmpty()) {
             // There is no previous ledger, return an invalid position in the current ledger
-            return DlogBasedPosition.get(position.getLedgerId(), -1);
+            return PositionImpl.get(position.getLedgerId(), -1);
         }
 
         // We need to find the most recent non-empty ledger
         for (long ledgerId : headMap.descendingKeySet()) {
             LedgerInfo li = headMap.get(ledgerId);
             if (li.getEntries() > 0) {
-                return DlogBasedPosition.get(li.getLedgerId(), li.getEntries() - 1);
+                return PositionImpl.get(li.getLedgerId(), li.getEntries() - 1);
             }
         }
 
         // in case there are only empty ledgers, we return a position in the first one
-        return DlogBasedPosition.get(headMap.firstEntry().getKey(), -1);
+        return PositionImpl.get(headMap.firstEntry().getKey(), -1);
     }
 
     /**
@@ -1627,8 +1624,8 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
      *            the position to validate
      * @return true if the position is valid, false otherwise
      */
-    boolean isValidPosition(DlogBasedPosition position) {
-        DlogBasedPosition last = lastConfirmedEntry;
+    boolean isValidPosition(PositionImpl position) {
+        PositionImpl last = lastConfirmedEntry;
         if (log.isDebugEnabled()) {
             log.debug("IsValid position: {} -- last: {}", position, last);
         }
@@ -1673,14 +1670,14 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
     }
 
 
-    DlogBasedPosition getNextValidPosition(final DlogBasedPosition position) {
-        DlogBasedPosition nextPosition = (DlogBasedPosition) position.getNext();
+    PositionImpl getNextValidPosition(final PositionImpl position) {
+        PositionImpl nextPosition = (PositionImpl) position.getNext();
         while (!isValidPosition(nextPosition)) {
             Long nextLedgerId = ledgers.ceilingKey(nextPosition.getLedgerId() + 1);
             if (nextLedgerId == null) {
                 return null;
             }
-            nextPosition = DlogBasedPosition.get(nextLedgerId.longValue(), 0);
+            nextPosition = PositionImpl.get(nextLedgerId.longValue(), 0);
         }
         return nextPosition;
     }
@@ -1688,11 +1685,11 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
     /**
      * get first position that can be mark delete, used by cursor.
      *
-     * @return DlogBasedPosition before the first valid position
+     * @return PositionImpl before the first valid position
      */
-    DlogBasedPosition getFirstPosition() {
+    PositionImpl getFirstPosition() {
         Long ledgerId = ledgers.firstKey();
-        return ledgerId == null ? null : new DlogBasedPosition(ledgerId, -1, 0);
+        return ledgerId == null ? null : new PositionImpl(ledgerId, -1);
 //        DLSN firstDLSN = null;
 //        try{
 //            firstDLSN = dlm.getFirstDLSNAsync().get();
@@ -1701,12 +1698,12 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
 //            log.error("getFirstDLSNAsync exception in getFirstPosition");
 //        }
 //        if(firstDLSN != null)
-//            return new DlogBasedPosition(firstDLSN);
+//            return new PositionImpl(firstDLSN);
 //        else
 //            return null;
     }
 
-    DlogBasedPosition getLastPosition() {
+    PositionImpl getLastPosition() {
         return lastConfirmedEntry;
     }
 
@@ -1715,16 +1712,16 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
         return cursors.getSlowestReader();
     }
 
-    DlogBasedPosition getMarkDeletePositionOfSlowestConsumer() {
+    PositionImpl getMarkDeletePositionOfSlowestConsumer() {
         ManagedCursor slowestCursor = getSlowestConsumer();
-        return slowestCursor == null ? null : (DlogBasedPosition) slowestCursor.getMarkDeletedPosition();
+        return slowestCursor == null ? null : (PositionImpl) slowestCursor.getMarkDeletedPosition();
     }
 
     /**
      * Get the last position written in the managed ledger, alongside with the associated counter
      */
-    Pair<DlogBasedPosition, Long> getLastPositionAndCounter() {
-        DlogBasedPosition pos;
+    Pair<PositionImpl, Long> getLastPositionAndCounter() {
+        PositionImpl pos;
         long count;
 
         do {
@@ -1753,7 +1750,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
                 // if removed subscription was the slowest subscription : update cursor and let it clear cache: till
                 // new slowest-cursor's read-position
                 discardEntriesFromCache((DlogBasedManagedCursor) activeCursors.getSlowestReader(),
-                        getPreviousPosition((DlogBasedPosition) activeCursors.getSlowestReader().getReadPosition()));
+                        getPreviousPosition((PositionImpl) activeCursors.getSlowestReader().getReadPosition()));
             }
         }
     }
@@ -1879,7 +1876,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
         return pendingAddEntries.size();
     }
 
-    public DlogBasedPosition getLastConfirmedEntry() {
+    public PositionImpl getLastConfirmedEntry() {
         return lastConfirmedEntry;
     }
 

@@ -44,6 +44,7 @@ import org.apache.bookkeeper.mledger.Position;
 import org.apache.bookkeeper.mledger.dlog.DlogBasedManagedCursor.VoidCallback;
 import org.apache.bookkeeper.mledger.impl.MetaStore.MetaStoreCallback;
 import org.apache.bookkeeper.mledger.impl.MetaStore.Stat;
+import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats.ManagedCursorInfo;
 import org.apache.bookkeeper.mledger.proto.MLDataFormats.PositionInfo;
 import org.apache.bookkeeper.util.OrderedSafeExecutor;
@@ -522,9 +523,9 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
         ledger.addEntry("dummy-entry-1".getBytes(Encoding));
         ledger.addEntry("dummy-entry-2".getBytes(Encoding));
         ledger.addEntry("dummy-entry-3".getBytes(Encoding));
-        DlogBasedPosition lastPosition = (DlogBasedPosition) ledger.addEntry("dummy-entry-4".getBytes(Encoding));
+        PositionImpl lastPosition = (PositionImpl) ledger.addEntry("dummy-entry-4".getBytes(Encoding));
         final AtomicBoolean moveStatus = new AtomicBoolean(false);
-        DlogBasedPosition resetPosition = new DlogBasedPosition(lastPosition.getLedgerId(), lastPosition.getEntryId() - 2);
+        PositionImpl resetPosition = new PositionImpl(lastPosition.getLedgerId(), lastPosition.getEntryId() - 2);
         try {
             cursor.resetCursor(resetPosition);
             moveStatus.set(true);
@@ -546,10 +547,10 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
         ledger.addEntry("dummy-entry-1".getBytes(Encoding));
         ledger.addEntry("dummy-entry-2".getBytes(Encoding));
         ledger.addEntry("dummy-entry-3".getBytes(Encoding));
-        DlogBasedPosition lastPosition = (DlogBasedPosition) ledger.addEntry("dummy-entry-4".getBytes(Encoding));
+        PositionImpl lastPosition = (PositionImpl) ledger.addEntry("dummy-entry-4".getBytes(Encoding));
         final AtomicBoolean moveStatus = new AtomicBoolean(false);
         CountDownLatch countDownLatch = new CountDownLatch(1);
-        DlogBasedPosition resetPosition = new DlogBasedPosition(lastPosition.getLedgerId(), lastPosition.getEntryId() - 2);
+        PositionImpl resetPosition = new PositionImpl(lastPosition.getLedgerId(), lastPosition.getEntryId() - 2);
 
         cursor.asyncResetCursor(resetPosition, new AsyncCallbacks.ResetCursorCallback() {
             @Override
@@ -585,7 +586,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
         for (int i = 0; i < Messages; i++) {
             ledger.addEntry("test".getBytes());
         }
-        final DlogBasedPosition lastPosition = (DlogBasedPosition) ledger.addEntry("dummy-entry-4".getBytes(Encoding));
+        final PositionImpl lastPosition = (PositionImpl) ledger.addEntry("dummy-entry-4".getBytes(Encoding));
 
         for (int i = 0; i < Consumers; i++) {
             final ManagedCursor cursor = ledger.openCursor("tcrc" + i);
@@ -598,14 +599,14 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
                     final AtomicBoolean moveStatus = new AtomicBoolean(false);
                     CountDownLatch countDownLatch = new CountDownLatch(1);
-                    final DlogBasedPosition resetPosition = new DlogBasedPosition(lastPosition.getLedgerId(),
+                    final PositionImpl resetPosition = new PositionImpl(lastPosition.getLedgerId(),
                             lastPosition.getEntryId() - (5 * idx));
 
                     cursor.asyncResetCursor(resetPosition, new AsyncCallbacks.ResetCursorCallback() {
                         @Override
                         public void resetComplete(Object ctx) {
                             moveStatus.set(true);
-                            DlogBasedPosition pos = (DlogBasedPosition) ctx;
+                            PositionImpl pos = (PositionImpl) ctx;
                             log.info("move to [{}] completed for consumer [{}]", pos.toString(), idx);
                             countDownLatch.countDown();
                         }
@@ -613,7 +614,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
                         @Override
                         public void resetFailed(ManagedLedgerException exception, Object ctx) {
                             moveStatus.set(false);
-                            DlogBasedPosition pos = (DlogBasedPosition) ctx;
+                            PositionImpl pos = (PositionImpl) ctx;
                             log.warn("move to [{}] failed for consumer [{}]", pos.toString(), idx);
                             countDownLatch.countDown();
                         }
@@ -642,9 +643,9 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
         ledger.addEntry("dummy-entry-1".getBytes(Encoding));
         ledger.addEntry("dummy-entry-2".getBytes(Encoding));
         ledger.addEntry("dummy-entry-3".getBytes(Encoding));
-        DlogBasedPosition lastPosition = (DlogBasedPosition) ledger.addEntry("dummy-entry-4".getBytes(Encoding));
+        PositionImpl lastPosition = (PositionImpl) ledger.addEntry("dummy-entry-4".getBytes(Encoding));
 
-        cursor.seek(new DlogBasedPosition(lastPosition.getLedgerId(), lastPosition.getEntryId() - 1));
+        cursor.seek(new PositionImpl(lastPosition.getLedgerId(), lastPosition.getEntryId() - 1));
     }
 
     @Test(timeOut = 20000)
@@ -653,12 +654,12 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
         ManagedCursor cursor = ledger.openCursor("c1");
         ledger.addEntry("dummy-entry-1".getBytes(Encoding));
         ledger.addEntry("dummy-entry-2".getBytes(Encoding));
-        DlogBasedPosition seekPosition = (DlogBasedPosition) ledger.addEntry("dummy-entry-3".getBytes(Encoding));
+        PositionImpl seekPosition = (PositionImpl) ledger.addEntry("dummy-entry-3".getBytes(Encoding));
         ledger.addEntry("dummy-entry-4".getBytes(Encoding));
         ledger.addEntry("dummy-entry-5".getBytes(Encoding));
         ledger.addEntry("dummy-entry-6".getBytes(Encoding));
 
-        cursor.seek(new DlogBasedPosition(seekPosition.getLedgerId(), seekPosition.getEntryId()));
+        cursor.seek(new PositionImpl(seekPosition.getLedgerId(), seekPosition.getEntryId()));
     }
 
     @Test(timeOut = 20000)
@@ -668,11 +669,11 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
         ledger.addEntry("dummy-entry-1".getBytes(Encoding));
         ledger.addEntry("dummy-entry-2".getBytes(Encoding));
         ledger.addEntry("dummy-entry-3".getBytes(Encoding));
-        DlogBasedPosition seekPosition = (DlogBasedPosition) ledger.addEntry("dummy-entry-4".getBytes(Encoding));
+        PositionImpl seekPosition = (PositionImpl) ledger.addEntry("dummy-entry-4".getBytes(Encoding));
         Position entry5 = ledger.addEntry("dummy-entry-5".getBytes(Encoding));
         Position entry6 = ledger.addEntry("dummy-entry-6".getBytes(Encoding));
 
-        cursor.seek(new DlogBasedPosition(seekPosition.getLedgerId(), seekPosition.getEntryId()));
+        cursor.seek(new PositionImpl(seekPosition.getLedgerId(), seekPosition.getEntryId()));
 
         assertEquals(cursor.getReadPosition(), seekPosition);
         List<Entry> entries = cursor.readEntries(1);
@@ -770,7 +771,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
         Position p1 = ledger.addEntry("dummy-entry-1".getBytes(Encoding));
         Position p2 = ledger.addEntry("dummy-entry-2".getBytes(Encoding));
         ledger.addEntry("dummy-entry-3".getBytes(Encoding));
-        DlogBasedPosition p4 = (DlogBasedPosition) ledger.addEntry("dummy-entry-4".getBytes(Encoding));
+        PositionImpl p4 = (PositionImpl) ledger.addEntry("dummy-entry-4".getBytes(Encoding));
 
         assertEquals(cursor.getNumberOfEntries(), 4);
 
@@ -789,7 +790,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
         assertEquals(cursor.hasMoreEntries(), false);
         assertEquals(cursor.getNumberOfEntries(), 0);
 
-        assertEquals(cursor.getReadPosition(), new DlogBasedPosition(p4.getLedgerId(), p4.getEntryId() + 1));
+        assertEquals(cursor.getReadPosition(), new PositionImpl(p4.getLedgerId(), p4.getEntryId() + 1));
     }
 
     // MaxEntriesPerLedger is disable
@@ -2077,7 +2078,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
         Thread.sleep(100);
         Position newPosition = ledger.addEntry(getEntryPublishTime("expectedresetposition"));
         long timestamp = System.currentTimeMillis();
-        long ledgerId = ((DlogBasedPosition) newPosition).getLedgerId();
+        long ledgerId = ((PositionImpl) newPosition).getLedgerId();
         Thread.sleep(2);
 
         ledger.addEntry(getEntryPublishTime("not-read"));
@@ -2092,7 +2093,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
         ledger = factory.open(ledgerAndCursorName, config);
         c1 = (DlogBasedManagedCursor) ledger.openCursor(ledgerAndCursorName);
 
-        DlogBasedPosition found = (DlogBasedPosition) findPositionFromAllEntries(c1, timestamp);
+        PositionImpl found = (PositionImpl) findPositionFromAllEntries(c1, timestamp);
         assertEquals(found.getLedgerId(), ledgerId);
         assertEquals(found.getEntryId(), expectedEntryId);
     }
@@ -2133,13 +2134,13 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
         ManagedLedger ledger = factory.open("my_test_ledger");
 
         DlogBasedManagedCursor c1 = (DlogBasedManagedCursor) ledger.openCursor("c1");
-        DlogBasedPosition p1 = (DlogBasedPosition) ledger.addEntry("entry1".getBytes(Encoding));
-        DlogBasedPosition p2 = (DlogBasedPosition) ledger.addEntry("entry2".getBytes(Encoding));
-        DlogBasedPosition p3 = (DlogBasedPosition) ledger.addEntry("entry3".getBytes(Encoding));
+        PositionImpl p1 = (PositionImpl) ledger.addEntry("entry1".getBytes(Encoding));
+        PositionImpl p2 = (PositionImpl) ledger.addEntry("entry2".getBytes(Encoding));
+        PositionImpl p3 = (PositionImpl) ledger.addEntry("entry3".getBytes(Encoding));
         ledger.addEntry("entry4".getBytes(Encoding));
 
         // 1. Replay empty position set should return empty entry set
-        Set<DlogBasedPosition> positions = Sets.newHashSet();
+        Set<PositionImpl> positions = Sets.newHashSet();
         assertTrue(c1.replayEntries(positions).isEmpty());
 
         positions.add(p1);
@@ -2155,7 +2156,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
         entries.forEach(Entry::release);
 
         // 3. Fail on reading non-existing position
-        DlogBasedPosition invalidPosition = new DlogBasedPosition(100, 100);
+        PositionImpl invalidPosition = new PositionImpl(100, 100);
         positions.add(invalidPosition);
 
         try {
@@ -2244,7 +2245,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
         List<Entry> entries = c1.readEntries(4);
         entries.forEach(e -> e.release());
-        long currentLedger = ((DlogBasedPosition) c1.getMarkDeletedPosition()).getLedgerId();
+        long currentLedger = ((PositionImpl) c1.getMarkDeletedPosition()).getLedgerId();
 
         // check if the first message is returned for '0'
         Entry e = c1.getNthEntry(1, IndividualDeletedEntries.Exclude);
@@ -2267,8 +2268,8 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
         assertNull(e);
 
         // check that the mark delete and read positions have not been updated after all the previous operations
-        assertEquals(c1.getMarkDeletedPosition(), new DlogBasedPosition(currentLedger, -1));
-        assertEquals(c1.getReadPosition(), new DlogBasedPosition(currentLedger, 4));
+        assertEquals(c1.getMarkDeletedPosition(), new PositionImpl(currentLedger, -1));
+        assertEquals(c1.getReadPosition(), new PositionImpl(currentLedger, 4));
 
         c1.markDelete(pos4);
         assertEquals(c1.getMarkDeletedPosition(), pos4);
