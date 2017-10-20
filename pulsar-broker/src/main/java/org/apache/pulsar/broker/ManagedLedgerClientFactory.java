@@ -40,17 +40,21 @@ public class ManagedLedgerClientFactory implements Closeable {
 
     public ManagedLedgerClientFactory(ServiceConfiguration conf, ZooKeeper zkClient,
             BookKeeperClientFactory bookkeeperProvider) throws Exception {
-        this.bkClient = bookkeeperProvider.create(conf, zkClient);
 
         ManagedLedgerFactoryConfig managedLedgerFactoryConfig = new ManagedLedgerFactoryConfig();
         managedLedgerFactoryConfig.setMaxCacheSize(conf.getManagedLedgerCacheSizeMB() * 1024L * 1024L);
         managedLedgerFactoryConfig.setCacheEvictionWatermark(conf.getManagedLedgerCacheEvictionWatermark());
 
 
-        if(conf.getManagedLedgerDefaultImplType() == 1)
+        if(conf.getManagedLedgerDefaultImplType() == 1){
+            this.bkClient = null;
             this.managedLedgerFactory = new DlogBasedManagedLedgerFactory(conf.getZookeeperServers(),managedLedgerFactoryConfig, conf.getDlogDefaultNamespaceURI());
-        else
+        }
+        else{
+            this.bkClient = bookkeeperProvider.create(conf, zkClient);
             this.managedLedgerFactory = new ManagedLedgerFactoryImpl(bkClient, zkClient, managedLedgerFactoryConfig);
+
+        }
 
     }
 
@@ -63,7 +67,8 @@ public class ManagedLedgerClientFactory implements Closeable {
             managedLedgerFactory.shutdown();
             log.info("Closed managed ledger factory");
 
-            bkClient.close();
+            if(bkClient != null)
+                bkClient.close();
             log.info("Closed BookKeeper client");
         } catch (Exception e) {
             log.warn(e.getMessage(), e);

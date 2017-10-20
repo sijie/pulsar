@@ -24,7 +24,7 @@ import static org.apache.bookkeeper.mledger.util.SafeRun.safeRun;
 import static org.apache.commons.collections.CollectionUtils.isEmpty;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 import static org.apache.pulsar.broker.cache.ConfigurationCacheService.POLICIES;
-
+import dlshade.org.apache.bookkeeper.client.BookKeeper;
 import java.io.Closeable;
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -55,6 +55,7 @@ import org.apache.bookkeeper.mledger.ManagedLedger;
 import org.apache.bookkeeper.mledger.ManagedLedgerConfig;
 import org.apache.bookkeeper.mledger.ManagedLedgerException;
 import org.apache.bookkeeper.mledger.ManagedLedgerFactory;
+import org.apache.bookkeeper.mledger.dlog.DlogBasedManagedLedgerConfig;
 import org.apache.bookkeeper.mledger.impl.ManagedLedgerConfigImpl;
 import org.apache.bookkeeper.util.OrderedSafeExecutor;
 import org.apache.bookkeeper.util.ZkUtils;
@@ -662,31 +663,61 @@ public class BrokerService implements Closeable, ZooKeeperCacheListener<Policies
                         serviceConfig.getDefaultRetentionSizeInMB());
             }
 
-            ManagedLedgerConfigImpl managedLedgerConfig = new ManagedLedgerConfigImpl();
-            managedLedgerConfig.setEnsembleSize(persistencePolicies.getBookkeeperEnsemble());
-            managedLedgerConfig.setWriteQuorumSize(persistencePolicies.getBookkeeperWriteQuorum());
-            managedLedgerConfig.setAckQuorumSize(persistencePolicies.getBookkeeperAckQuorum());
-            managedLedgerConfig.setThrottleMarkDelete(persistencePolicies.getManagedLedgerMaxMarkDeleteRate());
-            managedLedgerConfig.setDigestType(DigestType.CRC32);
+            ManagedLedgerConfig managedLedgerConfig = null;
+            // choose different managedLedgerConfig according to ml type
+            if(serviceConfig.getManagedLedgerDefaultImplType() == 1){
+                //dlog based ml
+                managedLedgerConfig = new DlogBasedManagedLedgerConfig();
+                managedLedgerConfig.setEnsembleSize(persistencePolicies.getBookkeeperEnsemble());
+                managedLedgerConfig.setWriteQuorumSize(persistencePolicies.getBookkeeperWriteQuorum());
+                managedLedgerConfig.setAckQuorumSize(persistencePolicies.getBookkeeperAckQuorum());
+                managedLedgerConfig.setThrottleMarkDelete(persistencePolicies.getManagedLedgerMaxMarkDeleteRate());
+                ((DlogBasedManagedLedgerConfig)managedLedgerConfig).setDigestType(BookKeeper.DigestType.CRC32);
 
-            managedLedgerConfig.setMaxUnackedRangesToPersist(serviceConfig.getManagedLedgerMaxUnackedRangesToPersist());
-            managedLedgerConfig.setMaxUnackedRangesToPersistInZk(serviceConfig.getManagedLedgerMaxUnackedRangesToPersistInZooKeeper());
-            managedLedgerConfig.setMaxEntriesPerLedger(serviceConfig.getManagedLedgerMaxEntriesPerLedger());
-            managedLedgerConfig.setMinimumRolloverTime(serviceConfig.getManagedLedgerMinLedgerRolloverTimeMinutes(),
-                    TimeUnit.MINUTES);
-            managedLedgerConfig.setMaximumRolloverTime(serviceConfig.getManagedLedgerMaxLedgerRolloverTimeMinutes(),
-                    TimeUnit.MINUTES);
-            managedLedgerConfig.setMaxSizePerLedgerMb(2048);
+                managedLedgerConfig.setMaxUnackedRangesToPersist(serviceConfig.getManagedLedgerMaxUnackedRangesToPersist());
+                managedLedgerConfig.setMaxUnackedRangesToPersistInZk(serviceConfig.getManagedLedgerMaxUnackedRangesToPersistInZooKeeper());
+                managedLedgerConfig.setMaxEntriesPerLedger(serviceConfig.getManagedLedgerMaxEntriesPerLedger());
+                managedLedgerConfig.setMinimumRolloverTime(serviceConfig.getManagedLedgerMinLedgerRolloverTimeMinutes(),
+                        TimeUnit.MINUTES);
+                managedLedgerConfig.setMaximumRolloverTime(serviceConfig.getManagedLedgerMaxLedgerRolloverTimeMinutes(),
+                        TimeUnit.MINUTES);
+                managedLedgerConfig.setMaxSizePerLedgerMb(2048);
 
-            managedLedgerConfig.setMetadataEnsembleSize(serviceConfig.getManagedLedgerDefaultEnsembleSize());
-            managedLedgerConfig.setMetadataWriteQuorumSize(serviceConfig.getManagedLedgerDefaultWriteQuorum());
-            managedLedgerConfig.setMetadataAckQuorumSize(serviceConfig.getManagedLedgerDefaultAckQuorum());
-            managedLedgerConfig
-                    .setMetadataMaxEntriesPerLedger(serviceConfig.getManagedLedgerCursorMaxEntriesPerLedger());
+                managedLedgerConfig.setMetadataEnsembleSize(serviceConfig.getManagedLedgerDefaultEnsembleSize());
+                managedLedgerConfig.setMetadataWriteQuorumSize(serviceConfig.getManagedLedgerDefaultWriteQuorum());
+                managedLedgerConfig.setMetadataAckQuorumSize(serviceConfig.getManagedLedgerDefaultAckQuorum());
 
-            managedLedgerConfig.setLedgerRolloverTimeout(serviceConfig.getManagedLedgerCursorRolloverTimeInSeconds());
-            managedLedgerConfig.setRetentionTime(retentionPolicies.getRetentionTimeInMinutes(), TimeUnit.MINUTES);
-            managedLedgerConfig.setRetentionSizeInMB(retentionPolicies.getRetentionSizeInMB());
+                managedLedgerConfig.setLedgerRolloverTimeout(serviceConfig.getManagedLedgerCursorRolloverTimeInSeconds());
+                managedLedgerConfig.setRetentionTime(retentionPolicies.getRetentionTimeInMinutes(), TimeUnit.MINUTES);
+                managedLedgerConfig.setRetentionSizeInMB(retentionPolicies.getRetentionSizeInMB());
+
+            } else {
+                managedLedgerConfig = new ManagedLedgerConfigImpl();
+                managedLedgerConfig.setEnsembleSize(persistencePolicies.getBookkeeperEnsemble());
+                managedLedgerConfig.setWriteQuorumSize(persistencePolicies.getBookkeeperWriteQuorum());
+                managedLedgerConfig.setAckQuorumSize(persistencePolicies.getBookkeeperAckQuorum());
+                managedLedgerConfig.setThrottleMarkDelete(persistencePolicies.getManagedLedgerMaxMarkDeleteRate());
+                ((ManagedLedgerConfigImpl)managedLedgerConfig).setDigestType(DigestType.CRC32);
+
+                managedLedgerConfig.setMaxUnackedRangesToPersist(serviceConfig.getManagedLedgerMaxUnackedRangesToPersist());
+                managedLedgerConfig.setMaxUnackedRangesToPersistInZk(serviceConfig.getManagedLedgerMaxUnackedRangesToPersistInZooKeeper());
+                managedLedgerConfig.setMaxEntriesPerLedger(serviceConfig.getManagedLedgerMaxEntriesPerLedger());
+                managedLedgerConfig.setMinimumRolloverTime(serviceConfig.getManagedLedgerMinLedgerRolloverTimeMinutes(),
+                        TimeUnit.MINUTES);
+                managedLedgerConfig.setMaximumRolloverTime(serviceConfig.getManagedLedgerMaxLedgerRolloverTimeMinutes(),
+                        TimeUnit.MINUTES);
+                managedLedgerConfig.setMaxSizePerLedgerMb(2048);
+
+                managedLedgerConfig.setMetadataEnsembleSize(serviceConfig.getManagedLedgerDefaultEnsembleSize());
+                managedLedgerConfig.setMetadataWriteQuorumSize(serviceConfig.getManagedLedgerDefaultWriteQuorum());
+                managedLedgerConfig.setMetadataAckQuorumSize(serviceConfig.getManagedLedgerDefaultAckQuorum());
+                managedLedgerConfig
+                        .setMetadataMaxEntriesPerLedger(serviceConfig.getManagedLedgerCursorMaxEntriesPerLedger());
+
+                managedLedgerConfig.setLedgerRolloverTimeout(serviceConfig.getManagedLedgerCursorRolloverTimeInSeconds());
+                managedLedgerConfig.setRetentionTime(retentionPolicies.getRetentionTimeInMinutes(), TimeUnit.MINUTES);
+                managedLedgerConfig.setRetentionSizeInMB(retentionPolicies.getRetentionSizeInMB());
+            }
 
             future.complete(managedLedgerConfig);
         }, (exception) -> future.completeExceptionally(exception)));
