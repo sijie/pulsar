@@ -50,7 +50,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static com.google.common.base.Preconditions.checkNotNull;
-import static org.apache.bookkeeper.mledger.util.SafeRun.safeRun;
+import static org.apache.bookkeeper.mledger.util.DLBKSafeRun.safeRun;
 
 public class DlogBasedEntryCacheManager {
 

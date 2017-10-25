@@ -52,7 +52,7 @@ import java.util.function.Consumer;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
-import static org.apache.bookkeeper.mledger.util.SafeRun.safeRun;
+import static org.apache.bookkeeper.mledger.util.DLBKSafeRun.safeRun;
 
 /**
  * Cache data payload for entries of all dlog log segments

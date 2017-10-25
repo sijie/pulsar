@@ -1,5 +1,6 @@
 package org.apache.bookkeeper.mledger.dlog;
 
+import dlshade.org.apache.bookkeeper.util.SafeRunnable;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.RecyclableDuplicateByteBuf;
 import io.netty.util.Recycler;
@@ -7,7 +8,6 @@ import io.netty.util.Recycler.Handle;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.AddEntryCallback;
 import org.apache.bookkeeper.mledger.ManagedLedgerException;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
-import org.apache.bookkeeper.util.SafeRunnable;
 import org.apache.distributedlog.DLSN;
 import org.apache.distributedlog.LogRecord;
 import org.apache.distributedlog.api.AsyncLogWriter;

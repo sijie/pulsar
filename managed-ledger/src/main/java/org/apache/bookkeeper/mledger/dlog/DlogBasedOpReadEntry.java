@@ -33,7 +33,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
-import static org.apache.bookkeeper.mledger.util.SafeRun.safeRun;
+import static org.apache.bookkeeper.mledger.util.DLBKSafeRun.safeRun;
 
 public class DlogBasedOpReadEntry implements ReadEntriesCallback {
 

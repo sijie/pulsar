@@ -7,6 +7,7 @@ import com.google.common.collect.Range;
 import com.google.common.util.concurrent.RateLimiter;
 import dlshade.org.apache.bookkeeper.client.BookKeeper;
 import dlshade.org.apache.bookkeeper.client.LedgerHandle;
+import dlshade.org.apache.bookkeeper.util.OrderedSafeExecutor;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.AddEntryCallback;
@@ -36,8 +37,6 @@ import org.apache.bookkeeper.mledger.proto.MLDataFormats.NestedPositionInfo;
 import org.apache.bookkeeper.mledger.util.CallbackMutex;
 import org.apache.bookkeeper.mledger.util.Futures;
 import org.apache.bookkeeper.mledger.util.Pair;
-import org.apache.bookkeeper.util.OrderedSafeExecutor;
-import org.apache.bookkeeper.util.UnboundArrayBlockingQueue;
 import org.apache.distributedlog.BookKeeperClient;
 import org.apache.distributedlog.DistributedLogConfiguration;
 import org.apache.distributedlog.LogSegmentMetadata;
@@ -67,6 +66,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -77,7 +78,7 @@ import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import static com.google.common.base.Charsets.UTF_8;
 import static com.google.common.base.Preconditions.checkArgument;
 import static java.lang.Math.min;
-import static org.apache.bookkeeper.mledger.util.SafeRun.safeRun;
+import static org.apache.bookkeeper.mledger.util.DLBKSafeRun.safeRun;
 
 public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener<AsyncLogWriter>,LogSegmentListener {
 
@@ -170,7 +171,9 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
      * Queue of pending entries to be added to the managed ledger. Typically entries are queued when a new ledger is
      * created asynchronously and hence there is no ready ledger to write into.
      */
-    final Queue<DlogBasedOpAddEntry> pendingAddEntries = new UnboundArrayBlockingQueue<>();
+    //replace yahoo-bk's UnboundArrayBlockingQueue with jdk's LinkedBlockingQueue
+            //todo use another unbound version
+    final Queue<DlogBasedOpAddEntry> pendingAddEntries = new LinkedBlockingQueue<>();
 
     // managing dlog log stream
     private AsyncLogWriter asyncLogWriter;

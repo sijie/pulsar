@@ -20,7 +20,7 @@ package org.apache.bookkeeper.mledger.dlog;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
-import static org.apache.bookkeeper.mledger.util.SafeRun.safeRun;
+import static org.apache.bookkeeper.mledger.util.DLBKSafeRun.safeRun;
 
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
