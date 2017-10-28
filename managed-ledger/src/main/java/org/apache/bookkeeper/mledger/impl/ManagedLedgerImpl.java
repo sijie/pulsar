@@ -200,7 +200,7 @@ public class ManagedLedgerImpl implements ManagedLedger, CreateCallback {
             final String name) {
         this.factory = factory;
         this.bookKeeper = bookKeeper;
-        this.config = (ManagedLedgerConfigImpl)config;
+        this.config = config;
         this.store = store;
         this.name = name;
         this.scheduledExecutor = scheduledExecutor;

@@ -284,14 +284,14 @@ public class ManagedLedgerErrorsTest extends MockedBookKeeperTestCase {
     @Test
     public void digestError() throws Exception {
         ManagedLedger ledger = factory.open("my_test_ledger",
-                new ManagedLedgerConfigImpl().setDigestType(DigestType.CRC32));
+                new ManagedLedgerConfig().setDigestType(DigestType.CRC32));
         ledger.openCursor("c1");
         ledger.addEntry("entry".getBytes());
 
         ledger.close();
 
         try {
-            ledger = factory.open("my_test_ledger", new ManagedLedgerConfigImpl().setDigestType(DigestType.MAC));
+            ledger = factory.open("my_test_ledger", new ManagedLedgerConfig().setDigestType(DigestType.MAC));
             fail("should fail for digest error");
         } catch (ManagedLedgerException e) {
             // ok

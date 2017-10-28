@@ -211,7 +211,7 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
 
     @Override
     public ManagedLedger open(String name) throws InterruptedException, ManagedLedgerException {
-        return open(name, new DlogBasedManagedLedgerConfig());
+        return open(name, new ManagedLedgerConfig());
     }
 
     @Override
@@ -247,7 +247,7 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
 
     @Override
     public void asyncOpen(String name, OpenLedgerCallback callback, Object ctx) {
-        asyncOpen(name, new DlogBasedManagedLedgerConfig(), callback, ctx);
+        asyncOpen(name, new ManagedLedgerConfig(), callback, ctx);
     }
 
     @Override
@@ -288,7 +288,7 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
         ledgers.computeIfAbsent(name, (mlName) -> {
             // Create the managed ledger
             CompletableFuture<DlogBasedManagedLedger> future = new CompletableFuture<>();
-            final DlogBasedManagedLedger newledger = new DlogBasedManagedLedger(this, bookKeeper,dlNamespace,distributedLogConfiguration, (DlogBasedManagedLedgerConfig)config, metaStore,executor,
+            final DlogBasedManagedLedger newledger = new DlogBasedManagedLedger(this, bookKeeper,dlNamespace,distributedLogConfiguration, config, metaStore,executor,
                     orderedExecutor, name);
             try{
                 newledger.initialize(new ManagedLedgerInitializeLedgerCallback() {

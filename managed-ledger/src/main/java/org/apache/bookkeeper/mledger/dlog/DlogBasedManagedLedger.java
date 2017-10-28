@@ -20,6 +20,7 @@ import org.apache.bookkeeper.mledger.AsyncCallbacks.TerminateCallback;
 import org.apache.bookkeeper.mledger.Entry;
 import org.apache.bookkeeper.mledger.ManagedCursor;
 import org.apache.bookkeeper.mledger.ManagedLedger;
+import org.apache.bookkeeper.mledger.ManagedLedgerConfig;
 import org.apache.bookkeeper.mledger.ManagedLedgerException;
 import org.apache.bookkeeper.mledger.ManagedLedgerException.ManagedLedgerFencedException;
 import org.apache.bookkeeper.mledger.ManagedLedgerException.ManagedLedgerTerminatedException;
@@ -89,7 +90,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
     private final String name;
     private final BookKeeper bookKeeper;
 
-    private final DlogBasedManagedLedgerConfig config;
+    private ManagedLedgerConfig config;
     private final MetaStore store;
 
     // local ledgers is used to calculate stats, such as size, entries.
@@ -183,7 +184,7 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
 
     // todo add statsLogger
     public DlogBasedManagedLedger(DlogBasedManagedLedgerFactory factory, BookKeeper bookKeeper, Namespace namespace, DistributedLogConfiguration dlConfig,
-                                  DlogBasedManagedLedgerConfig config, MetaStore store, ScheduledExecutorService scheduledExecutor, OrderedSafeExecutor orderedExecutor,
+                                  ManagedLedgerConfig config, MetaStore store, ScheduledExecutorService scheduledExecutor, OrderedSafeExecutor orderedExecutor,
                                   final String name) {
         this.factory = factory;
         this.config = config;
@@ -1821,8 +1822,13 @@ public class DlogBasedManagedLedger implements ManagedLedger,FutureEventListener
         return store;
     }
 
-    DlogBasedManagedLedgerConfig getConfig() {
+    public ManagedLedgerConfig getConfig() {
         return config;
+    }
+
+    @Override
+    public void setConfig(ManagedLedgerConfig config) {
+        this.config = config;
     }
 
     interface ManagedLedgerInitializeLedgerCallback {

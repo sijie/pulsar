@@ -159,7 +159,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
     @Test(timeOut = 20000)
     void readTwice() throws Exception {
-        ManagedLedger ledger = factory.open("my_test_ledger", new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(1));
+        ManagedLedger ledger = factory.open("my_test_ledger", new ManagedLedgerConfig().setMaxEntriesPerLedger(1));
 
         ManagedCursor c1 = ledger.openCursor("c1");
         ManagedCursor c2 = ledger.openCursor("c2");
@@ -189,7 +189,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
         ManagedLedgerFactoryConfig config = new ManagedLedgerFactoryConfig();
         config.setMaxCacheSize(0);
         factory = new DlogBasedManagedLedgerFactory(bkc, zkServers, config, createDLMURI("/default_namespace"));
-        ManagedLedger ledger = factory.open("my_test_ledger", new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(1));
+        ManagedLedger ledger = factory.open("my_test_ledger", new ManagedLedgerConfig().setMaxEntriesPerLedger(1));
 
         ManagedCursor c1 = ledger.openCursor("c1");
         ManagedCursor c2 = ledger.openCursor("c2");
@@ -237,7 +237,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
     @Test(timeOut = 20000)
     void readFromClosedLedger() throws Exception {
-        ManagedLedger ledger = factory.open("my_test_ledger", new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(1));
+        ManagedLedger ledger = factory.open("my_test_ledger", new ManagedLedgerConfig().setMaxEntriesPerLedger(1));
 
         ManagedCursor c1 = ledger.openCursor("c1");
 
@@ -253,7 +253,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
     @Test(timeOut = 20000)
     void testNumberOfEntries() throws Exception {
-        ManagedLedger ledger = factory.open("my_test_ledger", new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(2));
+        ManagedLedger ledger = factory.open("my_test_ledger", new ManagedLedgerConfig().setMaxEntriesPerLedger(2));
 
         ManagedCursor c1 = ledger.openCursor("c1");
         ledger.addEntry("dummy-entry-1".getBytes(Encoding));
@@ -289,7 +289,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
     @Test(timeOut = 20000)
     void testNumberOfEntriesInBacklog() throws Exception {
-        ManagedLedger ledger = factory.open("my_test_ledger", new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(2));
+        ManagedLedger ledger = factory.open("my_test_ledger", new ManagedLedgerConfig().setMaxEntriesPerLedger(2));
 
         ManagedCursor c1 = ledger.openCursor("c1");
         Position p1 = ledger.addEntry("dummy-entry-1".getBytes(Encoding));
@@ -330,7 +330,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
     @Test(timeOut = 20000)
     void testNumberOfEntriesWithReopen() throws Exception {
-        ManagedLedger ledger = factory.open("my_test_ledger", new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(1));
+        ManagedLedger ledger = factory.open("my_test_ledger", new ManagedLedgerConfig().setMaxEntriesPerLedger(1));
 
         ManagedCursor c1 = ledger.openCursor("c1");
         ledger.addEntry("dummy-entry-1".getBytes(Encoding));
@@ -338,7 +338,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
         ledger.addEntry("dummy-entry-2".getBytes(Encoding));
         ManagedCursor c3 = ledger.openCursor("c3");
         ManagedLedgerFactory factory2 = new DlogBasedManagedLedgerFactory(bkc, zkServers, createDLMURI("/default_namespace"));
-        ledger = factory2.open("my_test_ledger", new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(1));
+        ledger = factory2.open("my_test_ledger", new ManagedLedgerConfig().setMaxEntriesPerLedger(1));
 
         c1 = ledger.openCursor("c1");
         c2 = ledger.openCursor("c2");
@@ -518,7 +518,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
     @Test(timeOut = 20000)
     void testResetCursor() throws Exception {
         ManagedLedger ledger = factory.open("my_test_move_cursor_ledger",
-                new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(10));
+                new ManagedLedgerConfig().setMaxEntriesPerLedger(10));
         ManagedCursor cursor = ledger.openCursor("trc1");
         ledger.addEntry("dummy-entry-1".getBytes(Encoding));
         ledger.addEntry("dummy-entry-2".getBytes(Encoding));
@@ -542,7 +542,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
     @Test(timeOut = 20000)
     void testasyncResetCursor() throws Exception {
         ManagedLedger ledger = factory.open("my_test_move_cursor_ledger",
-                new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(10));
+                new ManagedLedgerConfig().setMaxEntriesPerLedger(10));
         ManagedCursor cursor = ledger.openCursor("tarc1");
         ledger.addEntry("dummy-entry-1".getBytes(Encoding));
         ledger.addEntry("dummy-entry-2".getBytes(Encoding));
@@ -638,7 +638,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
     @Test(timeOut = 20000)
     void seekPosition() throws Exception {
-        ManagedLedger ledger = factory.open("my_test_ledger", new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(10));
+        ManagedLedger ledger = factory.open("my_test_ledger", new ManagedLedgerConfig().setMaxEntriesPerLedger(10));
         ManagedCursor cursor = ledger.openCursor("c1");
         ledger.addEntry("dummy-entry-1".getBytes(Encoding));
         ledger.addEntry("dummy-entry-2".getBytes(Encoding));
@@ -650,7 +650,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
     @Test(timeOut = 20000)
     void seekPosition2() throws Exception {
-        ManagedLedger ledger = factory.open("my_test_ledger", new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(2));
+        ManagedLedger ledger = factory.open("my_test_ledger", new ManagedLedgerConfig().setMaxEntriesPerLedger(2));
         ManagedCursor cursor = ledger.openCursor("c1");
         ledger.addEntry("dummy-entry-1".getBytes(Encoding));
         ledger.addEntry("dummy-entry-2".getBytes(Encoding));
@@ -664,7 +664,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
     @Test(timeOut = 20000)
     void seekPosition3() throws Exception {
-        ManagedLedger ledger = factory.open("my_test_ledger", new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(2));
+        ManagedLedger ledger = factory.open("my_test_ledger", new ManagedLedgerConfig().setMaxEntriesPerLedger(2));
         ManagedCursor cursor = ledger.openCursor("c1");
         ledger.addEntry("dummy-entry-1".getBytes(Encoding));
         ledger.addEntry("dummy-entry-2".getBytes(Encoding));
@@ -714,7 +714,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
     @Test(timeOut = 20000)
     void rewind() throws Exception {
-        ManagedLedger ledger = factory.open("my_test_ledger", new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(2));
+        ManagedLedger ledger = factory.open("my_test_ledger", new ManagedLedgerConfig().setMaxEntriesPerLedger(2));
         ManagedCursor c1 = ledger.openCursor("c1");
         Position p1 = ledger.addEntry("dummy-entry-1".getBytes(Encoding));
         Position p2 = ledger.addEntry("dummy-entry-2".getBytes(Encoding));
@@ -766,7 +766,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
     @Test(timeOut = 20000)
     void markDeleteSkippingMessage() throws Exception {
-        ManagedLedger ledger = factory.open("my_test_ledger", new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(10));
+        ManagedLedger ledger = factory.open("my_test_ledger", new ManagedLedgerConfig().setMaxEntriesPerLedger(10));
         ManagedCursor cursor = ledger.openCursor("c1");
         Position p1 = ledger.addEntry("dummy-entry-1".getBytes(Encoding));
         Position p2 = ledger.addEntry("dummy-entry-2".getBytes(Encoding));
@@ -796,7 +796,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
     // MaxEntriesPerLedger is disable
     @Test(timeOut = 20000, enabled = false)
     void removingCursor() throws Exception {
-        ManagedLedger ledger = factory.open("my_test_ledger", new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(1));
+        ManagedLedger ledger = factory.open("my_test_ledger", new ManagedLedgerConfig().setMaxEntriesPerLedger(1));
         ManagedCursor cursor = ledger.openCursor("c1");
         ledger.addEntry("dummy-entry-1".getBytes(Encoding));
         ledger.addEntry("dummy-entry-2".getBytes(Encoding));
@@ -858,7 +858,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
     @Test(timeOut = 20000)
     void cursorPersistence2() throws Exception {
         ManagedLedger ledger = factory.open("my_test_ledger",
-                new DlogBasedManagedLedgerConfig().setMetadataMaxEntriesPerLedger(1));
+                new ManagedLedgerConfig().setMetadataMaxEntriesPerLedger(1));
         ManagedCursor c1 = ledger.openCursor("c1");
         ManagedCursor c2 = ledger.openCursor("c2");
         ManagedCursor c3 = ledger.openCursor("c3");
@@ -897,7 +897,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
     @Test(timeOut = 20000)
     public void asyncMarkDeleteBlocking() throws Exception {
-        ManagedLedgerConfig config = new DlogBasedManagedLedgerConfig();
+        ManagedLedgerConfig config = new ManagedLedgerConfig();
         config.setMaxEntriesPerLedger(10);
         config.setMetadataMaxEntriesPerLedger(5);
         ManagedLedger ledger = factory.open("my_test_ledger", config);
@@ -945,7 +945,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
     @Test(timeOut = 20000)
     void cursorPersistenceAsyncMarkDeleteSameThread() throws Exception {
         ManagedLedger ledger = factory.open("my_test_ledger",
-                new DlogBasedManagedLedgerConfig().setMetadataMaxEntriesPerLedger(5));
+                new ManagedLedgerConfig().setMetadataMaxEntriesPerLedger(5));
         final ManagedCursor c1 = ledger.openCursor("c1");
 
         final int N = 100;
@@ -1048,7 +1048,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
      }
     @Test(timeOut = 20000)
      void testClearBacklog() throws Exception {
-        ManagedLedger ledger = factory.open("my_test_ledger", new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(1));
+        ManagedLedger ledger = factory.open("my_test_ledger", new ManagedLedgerConfig().setMaxEntriesPerLedger(1));
 
         ManagedCursor c1 = ledger.openCursor("c1");
         ledger.addEntry("dummy-entry-1".getBytes(Encoding));
@@ -1077,7 +1077,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
         assertEquals(c3.hasMoreEntries(), false);
 
         ManagedLedgerFactory factory2 = new DlogBasedManagedLedgerFactory(bkc, zkServers, createDLMURI("/default_namespace"));
-        ledger = factory2.open("my_test_ledger", new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(1));
+        ledger = factory2.open("my_test_ledger", new ManagedLedgerConfig().setMaxEntriesPerLedger(1));
 
         c1 = ledger.openCursor("c1");
         c2 = ledger.openCursor("c2");
@@ -1214,7 +1214,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
     @Test(timeOut = 20000)
     void testSingleDelete() throws Exception {
-        ManagedLedger ledger = factory.open("my_test_ledger", new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(3));
+        ManagedLedger ledger = factory.open("my_test_ledger", new ManagedLedgerConfig().setMaxEntriesPerLedger(3));
         ManagedCursor cursor = ledger.openCursor("c1");
 
         Position p1 = ledger.addEntry("entry1".getBytes());
@@ -1254,7 +1254,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
     @Test(timeOut = 20000)
     void testFilteringReadEntries() throws Exception {
-        ManagedLedger ledger = factory.open("my_test_ledger", new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(3));
+        ManagedLedger ledger = factory.open("my_test_ledger", new ManagedLedgerConfig().setMaxEntriesPerLedger(3));
         ManagedCursor cursor = ledger.openCursor("c1");
 
         /* Position p1 = */ledger.addEntry("entry1".getBytes());
@@ -1289,7 +1289,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
     @Test(timeOut = 20000)
     void testReadingAllFilteredEntries() throws Exception {
-        ManagedLedger ledger = factory.open("my_test_ledger", new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(3));
+        ManagedLedger ledger = factory.open("my_test_ledger", new ManagedLedgerConfig().setMaxEntriesPerLedger(3));
         ledger.openCursor("c1");
         ManagedCursor c2 = ledger.openCursor("c2");
 
@@ -1312,7 +1312,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
     @Test(timeOut = 20000)
     void testCountingWithDeletedEntries() throws Exception {
-        ManagedLedger ledger = factory.open("my_test_ledger", new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(2));
+        ManagedLedger ledger = factory.open("my_test_ledger", new ManagedLedgerConfig().setMaxEntriesPerLedger(2));
         ManagedCursor cursor = ledger.openCursor("c1");
 
         Position p1 = ledger.addEntry("entry1".getBytes());
@@ -1344,7 +1344,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
     @Test(timeOut = 20000)
     void testMarkDeleteTwice() throws Exception {
-        ManagedLedger ledger = factory.open("my_test_ledger", new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(2));
+        ManagedLedger ledger = factory.open("my_test_ledger", new ManagedLedgerConfig().setMaxEntriesPerLedger(2));
         ManagedCursor cursor = ledger.openCursor("c1");
 
         Position p1 = ledger.addEntry("entry1".getBytes());
@@ -1356,7 +1356,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
     @Test(timeOut = 20000)
     void testSkipEntries() throws Exception {
-        ManagedLedger ledger = factory.open("my_test_ledger", new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(2));
+        ManagedLedger ledger = factory.open("my_test_ledger", new ManagedLedgerConfig().setMaxEntriesPerLedger(2));
         Position pos;
 
         ManagedCursor c1 = ledger.openCursor("c1");
@@ -1398,7 +1398,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
     @Test(timeOut = 20000)
     void testSkipEntriesWithIndividualDeletedMessages() throws Exception {
         ManagedLedger ledger = factory.open("testSkipEntriesWithIndividualDeletedMessages",
-                new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(5));
+                new ManagedLedgerConfig().setMaxEntriesPerLedger(5));
         ManagedCursor c1 = ledger.openCursor("c1");
 
         Position pos1 = ledger.addEntry("dummy-entry-1".getBytes(Encoding));
@@ -1433,7 +1433,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
     @Test(timeOut = 20000)
     void testRateLimitMarkDelete() throws Exception {
-        ManagedLedgerConfig config = new DlogBasedManagedLedgerConfig();
+        ManagedLedgerConfig config = new ManagedLedgerConfig();
         config.setThrottleMarkDelete(1); // Throttle to 1/s
         ManagedLedger ledger = factory.open("my_test_ledger", config);
 
@@ -1451,7 +1451,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
         // Re-open to recover from storage
         ManagedLedgerFactory factory2 = new DlogBasedManagedLedgerFactory(bkc, zkServers, createDLMURI("/default_namespace"));
-        ledger = factory2.open("my_test_ledger", new DlogBasedManagedLedgerConfig());
+        ledger = factory2.open("my_test_ledger", new ManagedLedgerConfig());
 
         c1 = ledger.openCursor("c1");
 
@@ -1825,7 +1825,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
     @Test(timeOut = 20000)
     void testFindNewestMatchingEdgeCase6() throws Exception {
         ManagedLedger ledger = factory.open("testFindNewestMatchingEdgeCase6",
-                new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(3));
+                new ManagedLedgerConfig().setMaxEntriesPerLedger(3));
 
         DlogBasedManagedCursor c1 = (DlogBasedManagedCursor) ledger.openCursor("c1");
         ledger.addEntry("expired".getBytes(Encoding));
@@ -2062,7 +2062,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
     void internalTestFindNewestMatchingAllEntries(final String name, final int entriesPerLedger,
             final int expectedEntryId) throws Exception {
         final String ledgerAndCursorName = name;
-        ManagedLedgerConfig config = new DlogBasedManagedLedgerConfig();
+        ManagedLedgerConfig config = new ManagedLedgerConfig();
         config.setRetentionSizeInMB(10);
         config.setMaxEntriesPerLedger(entriesPerLedger);
         config.setRetentionTime(1, TimeUnit.HOURS);
@@ -2307,7 +2307,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
     @Test(timeOut = 20000)
     void cancelReadOperation() throws Exception {
-        ManagedLedger ledger = factory.open("my_test_ledger", new DlogBasedManagedLedgerConfig().setMaxEntriesPerLedger(1));
+        ManagedLedger ledger = factory.open("my_test_ledger", new ManagedLedgerConfig().setMaxEntriesPerLedger(1));
 
         ManagedCursor c1 = ledger.openCursor("c1");
 
@@ -2379,7 +2379,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
     @Test(timeOut = 20000)
     public void testOutOfOrderDeletePersistenceWithClose() throws Exception {
-        ManagedLedger ledger = factory.open("my_test_ledger", new DlogBasedManagedLedgerConfig());
+        ManagedLedger ledger = factory.open("my_test_ledger", new ManagedLedgerConfig());
 
         ManagedCursor c1 = ledger.openCursor("c1");
         List<Position> addedPositions = new ArrayList<>();
@@ -2424,7 +2424,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
     @Test(timeOut = 20000)
     public void testOutOfOrderDeletePersistenceAfterCrash() throws Exception {
-        ManagedLedger ledger = factory.open("my_test_ledger", new DlogBasedManagedLedgerConfig());
+        ManagedLedger ledger = factory.open("my_test_ledger", new ManagedLedgerConfig());
 
         ManagedCursor c1 = ledger.openCursor("c1");
         List<Position> addedPositions = new ArrayList<>();
@@ -2444,7 +2444,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
 
         // Re-Open
         ManagedLedgerFactory factory2 = new DlogBasedManagedLedgerFactory(bkc, zkServers, createDLMURI("/default_namespace"));
-        ledger = factory2.open("my_test_ledger", new DlogBasedManagedLedgerConfig());
+        ledger = factory2.open("my_test_ledger", new ManagedLedgerConfig());
         c1 = ledger.openCursor("c1");
         assertEquals(c1.getNumberOfEntriesInBacklog(), 20 - 5);
 
@@ -2475,7 +2475,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
     @Test(timeOut=5000)
     public void testLeakFailedLedgerOfManageCursor() throws Exception {
 
-        ManagedLedgerConfig mlConfig = new DlogBasedManagedLedgerConfig();
+        ManagedLedgerConfig mlConfig = new ManagedLedgerConfig();
         ManagedLedger ledger = factory.open("my_test_ledger", mlConfig);
 
         DlogBasedManagedCursor c1 = (DlogBasedManagedCursor) ledger.openCursor("c1");
@@ -2522,7 +2522,8 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
         latch2.await();
 
         try {
-            bkc.openLedgerNoRecovery(ledgerId, ((DlogBasedManagedLedgerConfig)mlConfig).getDigestType(), ((DlogBasedManagedLedgerConfig)mlConfig).getPassword());
+            // mlConfig.getDigestType(), mlConfig.getPassword()
+            bkc.openLedgerNoRecovery(ledgerId, BookKeeper.DigestType.CRC32, "".getBytes());
             fail("ledger should have deleted due to update-cursor failure");
         } catch (BKException e) {
             // ok
@@ -2541,7 +2542,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
         final int totalAddEntries = 100;
         String ledgerName = "my_test_ledger";
         String cursorName = "c1";
-        ManagedLedgerConfig managedLedgerConfig = new DlogBasedManagedLedgerConfig();
+        ManagedLedgerConfig managedLedgerConfig = new ManagedLedgerConfig();
         // metaStore is allowed to store only up to 10 deleted entries range
         managedLedgerConfig.setMaxUnackedRangesToPersistInZk(10);
         DlogBasedManagedLedger ledger = (DlogBasedManagedLedger) factory.open(ledgerName, managedLedgerConfig);
@@ -2645,7 +2646,7 @@ public class DlogBasedManagedCursorTest extends TestDistributedLogBase {
         final int totalAddEntries = 100;
         String ledgerName = "my_test_ledger_zk";
         String cursorName = "c1";
-        ManagedLedgerConfig managedLedgerConfig = new DlogBasedManagedLedgerConfig();
+        ManagedLedgerConfig managedLedgerConfig = new ManagedLedgerConfig();
         DlogBasedManagedLedger ledger = (DlogBasedManagedLedger) factory.open(ledgerName, managedLedgerConfig);
 
         DlogBasedManagedCursor c1 = (DlogBasedManagedCursor) ledger.openCursor(cursorName);

@@ -24,6 +24,7 @@ import dlshade.org.apache.bookkeeper.client.BookKeeper;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.CloseCallback;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.DeleteCursorCallback;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.MarkDeleteCallback;
+import org.apache.bookkeeper.mledger.ManagedLedgerConfig;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.bookkeeper.mledger.util.Pair;
 import org.slf4j.Logger;
@@ -33,7 +34,7 @@ import java.util.Map;
 
 public class DlogBasedNonDurableCursor extends DlogBasedManagedCursor {
 
-    DlogBasedNonDurableCursor(BookKeeper bookkeeper, DlogBasedManagedLedgerConfig config, DlogBasedManagedLedger ledger, String cursorName,
+    DlogBasedNonDurableCursor(BookKeeper bookkeeper, ManagedLedgerConfig config, DlogBasedManagedLedger ledger, String cursorName,
                               PositionImpl startCursorPosition) {
         super(bookkeeper, config, ledger, cursorName);
 

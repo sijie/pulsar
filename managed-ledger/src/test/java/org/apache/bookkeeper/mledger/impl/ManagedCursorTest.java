@@ -2413,7 +2413,7 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
     @Test(timeOut=5000)
     public void testLeakFailedLedgerOfManageCursor() throws Exception {
 
-        ManagedLedgerConfigImpl mlConfig = new ManagedLedgerConfigImpl();
+        ManagedLedgerConfig mlConfig = new ManagedLedgerConfig();
         ManagedLedger ledger = factory.open("my_test_ledger", mlConfig);
 
         ManagedCursorImpl c1 = (ManagedCursorImpl) ledger.openCursor("c1");
@@ -2479,7 +2479,7 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
         final int totalAddEntries = 100;
         String ledgerName = "my_test_ledger";
         String cursorName = "c1";
-        ManagedLedgerConfig managedLedgerConfig = new ManagedLedgerConfigImpl();
+        ManagedLedgerConfig managedLedgerConfig = new ManagedLedgerConfig();
         // metaStore is allowed to store only up to 10 deleted entries range
         managedLedgerConfig.setMaxUnackedRangesToPersistInZk(10);
         ManagedLedgerImpl ledger = (ManagedLedgerImpl) factory.open(ledgerName, managedLedgerConfig);

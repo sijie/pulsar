@@ -48,7 +48,7 @@ import org.apache.bookkeeper.mledger.AsyncCallbacks.ReadEntryCallback;
 import org.apache.bookkeeper.mledger.AsyncCallbacks.SkipEntriesCallback;
 import org.apache.bookkeeper.mledger.Entry;
 import org.apache.bookkeeper.mledger.ManagedCursor;
-import org.apache.bookkeeper.mledger.dlog.DlogBasedManagedLedgerConfig;
+import org.apache.bookkeeper.mledger.ManagedLedgerConfig;
 import org.apache.bookkeeper.mledger.ManagedLedgerException;
 import org.apache.bookkeeper.mledger.ManagedLedgerException.CursorAlreadyClosedException;
 import org.apache.bookkeeper.mledger.ManagedLedgerException.MetaStoreException;
@@ -79,7 +79,7 @@ import com.google.protobuf.InvalidProtocolBufferException;
 public class DlogBasedManagedCursor implements ManagedCursor {
 
     protected final BookKeeper bookkeeper;
-    protected final DlogBasedManagedLedgerConfig config;
+    protected final ManagedLedgerConfig config;
     protected final DlogBasedManagedLedger ledger;
     private final String name;
 
@@ -165,7 +165,7 @@ public class DlogBasedManagedCursor implements ManagedCursor {
         void operationFailed(ManagedLedgerException exception);
     }
 
-    DlogBasedManagedCursor(BookKeeper bookkeeper, DlogBasedManagedLedgerConfig config, DlogBasedManagedLedger ledger, String cursorName) {
+    DlogBasedManagedCursor(BookKeeper bookkeeper, ManagedLedgerConfig config, DlogBasedManagedLedger ledger, String cursorName) {
         this.bookkeeper = bookkeeper;
         this.config = config;
         this.ledger = ledger;
@@ -236,13 +236,16 @@ public class DlogBasedManagedCursor implements ManagedCursor {
         });
     }
 
+    // use static BK's DigestType and Password,
+    // todo after Pulsar bump bk，use config to get DigestType and Password,
     protected void recoverFromLedger(final ManagedCursorInfo info, final VoidCallback callback) {
         // Read the acknowledged position from the metadata ledger, then create
         // a new ledger and write the position into it
         ledger.mbean.startCursorLedgerOpenOp();
         long ledgerId = info.getCursorsLedgerId();
-        bookkeeper.asyncOpenLedger(ledgerId, config.getDigestType(), config.getPassword(), (rc, lh, ctx) -> {
-            if (log.isDebugEnabled()) {
+//        bookkeeper.asyncOpenLedger(ledgerId, config.getDigestType(), config.getPassword(), (rc, lh, ctx) -> {
+            bookkeeper.asyncOpenLedger(ledgerId, BookKeeper.DigestType.CRC32, "".getBytes(), (rc, lh, ctx) -> {
+                if (log.isDebugEnabled()) {
                 log.debug("[{}] Opened ledger {} for consumer {}. rc={}", ledger.getName(), ledgerId, name, rc);
             }
             if (isBkErrorNotRecoverable(rc)) {
@@ -640,6 +643,16 @@ public class DlogBasedManagedCursor implements ManagedCursor {
     @Override
     public int getTotalNonContiguousDeletedMessagesRange() {
         return individualDeletedMessages.asRanges().size();
+    }
+
+    @Override
+    public double getThrottleMarkDelete() {
+        return 0;
+    }
+
+    @Override
+    public void setThrottleMarkDelete(double throttleMarkDelete) {
+
     }
 
 
@@ -1870,8 +1883,9 @@ public class DlogBasedManagedCursor implements ManagedCursor {
     void createNewMetadataLedger(final VoidCallback callback) {
         ledger.mbean.startCursorLedgerCreateOp();
 
+        //todo config.getDigestType(), config.getPassword()
         bookkeeper.asyncCreateLedger(config.getMetadataEnsemblesize(), config.getMetadataWriteQuorumSize(),
-                config.getMetadataAckQuorumSize(), config.getDigestType(), config.getPassword(),new AsyncCallback.CreateCallback(){
+                config.getMetadataAckQuorumSize(), BookKeeper.DigestType.CRC32, "".getBytes(), new AsyncCallback.CreateCallback(){
                     @Override
                     public void createComplete(int rc, LedgerHandle lh, Object ctx){
                         ledger.getExecutor().submit(safeRun(() -> {
