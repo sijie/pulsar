@@ -72,7 +72,7 @@ public class DlogBasedManagedLedgerFactory implements ManagedLedgerFactory {
     private final ManagedLedgerFactoryConfig mlconfig;
     protected final ScheduledExecutorService executor = Executors.newScheduledThreadPool(16,
             new DefaultThreadFactory("bookkeeper-ml"));
-    private final OrderedSafeExecutor orderedExecutor = new OrderedSafeExecutor(16, "bookkeeper-ml-workers");
+    private final OrderedSafeExecutor orderedExecutor = OrderedSafeExecutor.newBuilder().numThreads(16).name("bookkeeper-ml-workers").build();
 
     protected final DlogBasedManagedLedgerFactoryMBean mbean;
     protected final ConcurrentHashMap<String, CompletableFuture<DlogBasedManagedLedger>> ledgers = new ConcurrentHashMap<>();

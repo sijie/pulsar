@@ -20,6 +20,7 @@ package org.apache.bookkeeper.mledger.dlog;
 
 import com.google.common.base.Charsets;
 import com.google.common.collect.Sets;
+import dlshade.org.apache.bookkeeper.client.BKException;
 import dlshade.org.apache.bookkeeper.client.BookKeeper;
 import dlshade.org.apache.bookkeeper.conf.ClientConfiguration;
 import io.netty.buffer.ByteBuf;
