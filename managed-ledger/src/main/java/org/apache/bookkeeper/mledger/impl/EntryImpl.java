@@ -155,6 +155,6 @@ final class EntryImpl extends AbstractReferenceCounted implements Entry, Compara
 
     @Override
     public ReferenceCounted touch(Object o) {
-        return null;
+        return this;
     }
 }

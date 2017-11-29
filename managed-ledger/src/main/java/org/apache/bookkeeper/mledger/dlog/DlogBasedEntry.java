@@ -1,3 +1,21 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
 package org.apache.bookkeeper.mledger.dlog;
 
 import io.netty.buffer.ByteBuf;
@@ -11,11 +29,12 @@ import org.apache.bookkeeper.mledger.Position;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
 import org.apache.distributedlog.DLSN;
 import org.apache.distributedlog.LogRecordWithDLSN;
+import org.apache.distributedlog.common.util.ByteBufUtils;
 
 /**
- * Created by yaoguangzhong on 2017/8/17.
+ * Entry implemented by dlog.
+ *
  */
-
 final class DlogBasedEntry extends AbstractReferenceCounted implements Entry, Comparable<org.apache.bookkeeper.mledger.dlog.DlogBasedEntry>
 {
     private static final Recycler<DlogBasedEntry> RECYCLER = new Recycler<DlogBasedEntry>() {
@@ -34,11 +53,10 @@ final class DlogBasedEntry extends AbstractReferenceCounted implements Entry, Co
         this.recyclerHandle = recyclerHandle;
     }
 
-    //todo is it ok to use unpool?
     public static DlogBasedEntry create(LogRecordWithDLSN logRecord) {
         DlogBasedEntry entry = RECYCLER.get();
         entry.dlsn = logRecord.getDlsn();
-        entry.data = Unpooled.wrappedBuffer(logRecord.getPayload());
+        entry.data = logRecord.getPayloadBuf();
         entry.data.retain();
         entry.setRefCnt(1);
         return entry;
@@ -95,10 +113,7 @@ final class DlogBasedEntry extends AbstractReferenceCounted implements Entry, Co
 
     @Override
     public byte[] getData() {
-
-        byte[] array = new byte[(int) data.readableBytes()];
-        data.getBytes(data.readerIndex(), array);
-        return array;
+        return ByteBufUtils.getArray(data);
     }
 
     @Override
@@ -124,19 +139,19 @@ final class DlogBasedEntry extends AbstractReferenceCounted implements Entry, Co
         return new PositionImpl(dlsn);
     }
 
-    //todo remove getLedgerId and getEntryId in Entry
     @Override
     public long getLedgerId() {
-        return 0;
+        return dlsn.getLogSegmentSequenceNo();
     }
 
     @Override
     public long getEntryId() {
-        return 0;
+        return dlsn.getEntryId();
     }
 
     @Override
-    public ReferenceCounted touch(Object o) {
-        return null;
+    public ReferenceCounted touch(Object hint) {
+        data.touch(hint);
+        return this;
     }
 }
