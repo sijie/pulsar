@@ -41,6 +41,7 @@ import java.io.OutputStream;
 import java.lang.reflect.Constructor;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.channels.FileChannel;
 import java.nio.channels.GatheringByteChannel;
 import java.nio.channels.ScatteringByteChannel;
 
@@ -177,8 +178,18 @@ public final class DoubleByteBuf extends AbstractReferenceCountedByteBuf {
     }
 
     @Override
+    protected short _getShortLE(int i) {
+        return 0;
+    }
+
+    @Override
     protected int _getUnsignedMedium(int index) {
         throw new UnsupportedOperationException();
+    }
+
+    @Override
+    protected int _getUnsignedMediumLE(int i) {
+        return 0;
     }
 
     @Override
@@ -187,8 +198,18 @@ public final class DoubleByteBuf extends AbstractReferenceCountedByteBuf {
     }
 
     @Override
+    protected int _getIntLE(int i) {
+        return 0;
+    }
+
+    @Override
     protected long _getLong(int index) {
         throw new UnsupportedOperationException();
+    }
+
+    @Override
+    protected long _getLongLE(int i) {
+        return 0;
     }
 
     @Override
@@ -231,6 +252,11 @@ public final class DoubleByteBuf extends AbstractReferenceCountedByteBuf {
     }
 
     @Override
+    public int getBytes(int i, FileChannel fileChannel, long l, int i1) throws IOException {
+        return 0;
+    }
+
+    @Override
     public DoubleByteBuf getBytes(int index, OutputStream out, int length) throws IOException {
         throw new UnsupportedOperationException();
     }
@@ -256,6 +282,11 @@ public final class DoubleByteBuf extends AbstractReferenceCountedByteBuf {
     }
 
     @Override
+    protected void _setShortLE(int i, int i1) {
+
+    }
+
+    @Override
     public DoubleByteBuf setMedium(int index, int value) {
         throw new UnsupportedOperationException();
     }
@@ -263,6 +294,11 @@ public final class DoubleByteBuf extends AbstractReferenceCountedByteBuf {
     @Override
     protected void _setMedium(int index, int value) {
         throw new UnsupportedOperationException();
+    }
+
+    @Override
+    protected void _setMediumLE(int i, int i1) {
+
     }
 
     @Override
@@ -276,6 +312,11 @@ public final class DoubleByteBuf extends AbstractReferenceCountedByteBuf {
     }
 
     @Override
+    protected void _setIntLE(int i, int i1) {
+
+    }
+
+    @Override
     public DoubleByteBuf setLong(int index, long value) {
         throw new UnsupportedOperationException();
     }
@@ -283,6 +324,11 @@ public final class DoubleByteBuf extends AbstractReferenceCountedByteBuf {
     @Override
     protected void _setLong(int index, long value) {
         throw new UnsupportedOperationException();
+    }
+
+    @Override
+    protected void _setLongLE(int i, long l) {
+
     }
 
     @Override
@@ -308,6 +354,11 @@ public final class DoubleByteBuf extends AbstractReferenceCountedByteBuf {
     @Override
     public int setBytes(int index, ScatteringByteChannel in, int length) throws IOException {
         throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public int setBytes(int i, FileChannel fileChannel, long l, int i1) throws IOException {
+        return 0;
     }
 
     @Override

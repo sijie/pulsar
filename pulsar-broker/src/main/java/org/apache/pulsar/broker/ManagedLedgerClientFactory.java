@@ -24,6 +24,7 @@ import java.io.IOException;
 import org.apache.bookkeeper.client.BookKeeper;
 import org.apache.bookkeeper.mledger.ManagedLedgerFactory;
 import org.apache.bookkeeper.mledger.ManagedLedgerFactoryConfig;
+import org.apache.bookkeeper.mledger.dlog.DlogBasedManagedLedgerFactory;
 import org.apache.bookkeeper.mledger.impl.ManagedLedgerFactoryImpl;
 import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.zookeeper.ZooKeeper;
@@ -39,13 +40,22 @@ public class ManagedLedgerClientFactory implements Closeable {
 
     public ManagedLedgerClientFactory(ServiceConfiguration conf, ZooKeeper zkClient,
             BookKeeperClientFactory bookkeeperProvider) throws Exception {
-        this.bkClient = bookkeeperProvider.create(conf, zkClient);
 
         ManagedLedgerFactoryConfig managedLedgerFactoryConfig = new ManagedLedgerFactoryConfig();
         managedLedgerFactoryConfig.setMaxCacheSize(conf.getManagedLedgerCacheSizeMB() * 1024L * 1024L);
         managedLedgerFactoryConfig.setCacheEvictionWatermark(conf.getManagedLedgerCacheEvictionWatermark());
 
-        this.managedLedgerFactory = new ManagedLedgerFactoryImpl(bkClient, zkClient, managedLedgerFactoryConfig);
+
+        if(conf.getManagedLedgerDefaultImplType() == 1){
+            this.bkClient = null;
+            this.managedLedgerFactory = new DlogBasedManagedLedgerFactory(conf.getZookeeperServers(),managedLedgerFactoryConfig, conf.getDlogDefaultNamespaceURI());
+        }
+        else{
+            this.bkClient = bookkeeperProvider.create(conf, zkClient);
+            this.managedLedgerFactory = new ManagedLedgerFactoryImpl(bkClient, zkClient, managedLedgerFactoryConfig);
+
+        }
+
     }
 
     public ManagedLedgerFactory getManagedLedgerFactory() {
@@ -57,7 +67,8 @@ public class ManagedLedgerClientFactory implements Closeable {
             managedLedgerFactory.shutdown();
             log.info("Closed managed ledger factory");
 
-            bkClient.close();
+            if(bkClient != null)
+                bkClient.close();
             log.info("Closed BookKeeper client");
         } catch (Exception e) {
             log.warn(e.getMessage(), e);

@@ -100,6 +100,10 @@ public class ServiceConfiguration implements PulsarConfiguration {
     // relative to a disconnected producer. Default is 6 hours.
     private int brokerDeduplicationProducerInactivityTimeoutMinutes = 360;
 
+    // When a namespace is created without specifying the number of bundle, this
+    // value will be used as the default
+    private int defaultNumberOfNamespaceBundles = 4;
+
     // Enable check for minimum allowed client library version
     private boolean clientLibraryVersionCheckEnabled = false;
     // Allow client libraries with no version information
@@ -218,7 +222,15 @@ public class ServiceConfiguration implements PulsarConfiguration {
     @FieldContext(required = false)
     private String bookkeeperClientIsolationGroups;
 
+
+
     /**** --- Managed Ledger --- ****/
+    //Managed Ledger impl type, 0 indicate bk, 1 for dlog.
+    private int managedLedgerDefaultImplType = 0;
+
+    //Dlog's default namespace, when using dlog
+    private String dlogDefaultNamespaceURI = "default_namespace";
+
     // Number of bookies to use when creating a ledger
     @FieldContext(minValue = 1)
     private int managedLedgerDefaultEnsembleSize = 1;
@@ -269,7 +281,7 @@ public class ServiceConfiguration implements PulsarConfiguration {
     private int managedLedgerMaxUnackedRangesToPersist = 10000;
     // Max number of "acknowledgment holes" that can be stored in Zookeeper. If number of unack message range is higher
     // than this limit then broker will persist unacked ranges into bookkeeper to avoid additional data overhead into
-    // zookeeper.  
+    // zookeeper.
     private int managedLedgerMaxUnackedRangesToPersistInZooKeeper = 1000;
 
     /*** --- Load balancer --- ****/
@@ -301,7 +313,11 @@ public class ServiceConfiguration implements PulsarConfiguration {
     // Usage threshold to defermine a broker is having just right level of load
     private int loadBalancerBrokerComfortLoadLevelPercentage = 65;
     // enable/disable automatic namespace bundle split
+    @FieldContext(dynamic = true)
     private boolean loadBalancerAutoBundleSplitEnabled = false;
+    // enable/disable automatic unloading of split bundles
+    @FieldContext(dynamic = true)
+    private boolean loadBalancerAutoUnloadSplitBundlesEnabled = false;
     // maximum topics in a bundle, otherwise bundle split will be triggered
     private int loadBalancerNamespaceBundleMaxTopics = 1000;
     // maximum sessions (producers + consumers) in a bundle, otherwise bundle split will be triggered
@@ -500,6 +516,14 @@ public class ServiceConfiguration implements PulsarConfiguration {
     public void setBrokerDeduplicationProducerInactivityTimeoutMinutes(
             int brokerDeduplicationProducerInactivityTimeoutMinutes) {
         this.brokerDeduplicationProducerInactivityTimeoutMinutes = brokerDeduplicationProducerInactivityTimeoutMinutes;
+    }
+
+    public int getDefaultNumberOfNamespaceBundles() {
+        return defaultNumberOfNamespaceBundles;
+    }
+
+    public void setDefaultNumberOfNamespaceBundles(int defaultNumberOfNamespaceBundles) {
+        this.defaultNumberOfNamespaceBundles = defaultNumberOfNamespaceBundles;
     }
 
     public long getBrokerDeleteInactiveTopicsFrequencySeconds() {
@@ -1100,12 +1124,20 @@ public class ServiceConfiguration implements PulsarConfiguration {
         this.loadBalancerBrokerComfortLoadLevelPercentage = percentage;
     }
 
-    public boolean getLoadBalancerAutoBundleSplitEnabled() {
+    public boolean isLoadBalancerAutoBundleSplitEnabled() {
         return this.loadBalancerAutoBundleSplitEnabled;
     }
 
     public void setLoadBalancerAutoBundleSplitEnabled(boolean enabled) {
         this.loadBalancerAutoBundleSplitEnabled = enabled;
+    }
+
+    public boolean isLoadBalancerAutoUnloadSplitBundlesEnabled() {
+        return loadBalancerAutoUnloadSplitBundlesEnabled;
+    }
+
+    public void setLoadBalancerAutoUnloadSplitBundlesEnabled(boolean loadBalancerAutoUnloadSplitBundlesEnabled) {
+        this.loadBalancerAutoUnloadSplitBundlesEnabled = loadBalancerAutoUnloadSplitBundlesEnabled;
     }
 
     public void setLoadBalancerNamespaceMaximumBundles(int bundles) {
@@ -1245,4 +1277,19 @@ public class ServiceConfiguration implements PulsarConfiguration {
     public int getWebSocketConnectionsPerBroker() { return webSocketConnectionsPerBroker; }
 
     public void setWebSocketConnectionsPerBroker(int webSocketConnectionsPerBroker) { this.webSocketConnectionsPerBroker = webSocketConnectionsPerBroker; }
+    public int getManagedLedgerDefaultImplType() {
+        return managedLedgerDefaultImplType;
+    }
+
+    public void setManagedLedgerDefaultImplType(int managedLedgerDefaultImplType) {
+        this.managedLedgerDefaultImplType = managedLedgerDefaultImplType;
+    }
+    public String getDlogDefaultNamespaceURI() {
+        return dlogDefaultNamespaceURI;
+    }
+
+    public void setDlogDefaultNamespaceURI(String dlogDefaultNamespaceURI) {
+        this.dlogDefaultNamespaceURI = dlogDefaultNamespaceURI;
+    }
+
 }

@@ -49,6 +49,8 @@ import org.apache.bookkeeper.mledger.ManagedLedgerException;
 import org.apache.bookkeeper.mledger.ManagedLedgerException.ManagedLedgerFencedException;
 import org.apache.bookkeeper.mledger.ManagedLedgerException.ManagedLedgerTerminatedException;
 import org.apache.bookkeeper.mledger.Position;
+import org.apache.bookkeeper.mledger.dlog.DlogBasedManagedCursor;
+import org.apache.bookkeeper.mledger.dlog.DlogBasedManagedLedger;
 import org.apache.bookkeeper.mledger.impl.ManagedCursorImpl;
 import org.apache.bookkeeper.mledger.impl.ManagedLedgerImpl;
 import org.apache.bookkeeper.mledger.impl.PositionImpl;
@@ -186,6 +188,8 @@ public class PersistentTopic implements Topic, AddEntryCallback {
         }
     }
 
+    // add ml type identifier
+    int mlType = 0;
     public PersistentTopic(String topic, ManagedLedger ledger, BrokerService brokerService) {
         this.topic = topic;
         this.ledger = ledger;
@@ -219,6 +223,8 @@ public class PersistentTopic implements Topic, AddEntryCallback {
         this.lastActive = System.nanoTime();
 
         this.messageDeduplication = new MessageDeduplication(brokerService.pulsar(), this, ledger);
+        if(ledger instanceof DlogBasedManagedLedger)
+            mlType = 1;
     }
 
     @Override
@@ -1113,7 +1119,10 @@ public class PersistentTopic implements Topic, AddEntryCallback {
         destStatsStream.writePair("msgThroughputIn", topicStats.aggMsgThroughputIn);
         destStatsStream.writePair("msgThroughputOut", topicStats.aggMsgThroughputOut);
         destStatsStream.writePair("storageSize", ledger.getEstimatedBacklogSize());
-        destStatsStream.writePair("pendingAddEntriesCount", ((ManagedLedgerImpl) ledger).getPendingAddEntriesCount());
+        if(mlType == 1)
+            destStatsStream.writePair("pendingAddEntriesCount", ((DlogBasedManagedLedger) ledger).getPendingAddEntriesCount());
+        else
+            destStatsStream.writePair("pendingAddEntriesCount", ((ManagedLedgerImpl) ledger).getPendingAddEntriesCount());
 
         nsStats.msgRateIn += topicStats.aggMsgRateIn;
         nsStats.msgRateOut += topicStats.aggMsgRateOut;
@@ -1125,7 +1134,10 @@ public class PersistentTopic implements Topic, AddEntryCallback {
         bundleStats.msgRateOut += topicStats.aggMsgRateOut;
         bundleStats.msgThroughputIn += topicStats.aggMsgThroughputIn;
         bundleStats.msgThroughputOut += topicStats.aggMsgThroughputOut;
-        bundleStats.cacheSize += ((ManagedLedgerImpl) ledger).getCacheSize();
+        if(mlType == 1)
+            bundleStats.cacheSize += ((DlogBasedManagedLedger) ledger).getCacheSize();
+        else
+            bundleStats.cacheSize += ((ManagedLedgerImpl) ledger).getCacheSize();
 
         // Close topic object
         destStatsStream.endObject();
@@ -1184,53 +1196,102 @@ public class PersistentTopic implements Topic, AddEntryCallback {
 
     public PersistentTopicInternalStats getInternalStats() {
         PersistentTopicInternalStats stats = new PersistentTopicInternalStats();
+        if(mlType == 1){
+            DlogBasedManagedLedger ml = (DlogBasedManagedLedger) ledger;
+            stats.entriesAddedCounter = ml.getEntriesAddedCounter();
+            stats.numberOfEntries = ml.getNumberOfEntries();
+            stats.totalSize = ml.getTotalSize();
+            stats.currentLedgerEntries = ml.getCurrentLedgerEntries();
+            stats.currentLedgerSize = ml.getCurrentLedgerSize();
+            stats.lastLedgerCreatedTimestamp = DATE_FORMAT.format(Instant.ofEpochMilli(ml.getLastLedgerCreatedTimestamp()));
+            if (ml.getLastLedgerCreationFailureTimestamp() != 0) {
+                stats.lastLedgerCreationFailureTimestamp = DATE_FORMAT
+                        .format(Instant.ofEpochMilli(ml.getLastLedgerCreationFailureTimestamp()));
+            }
 
-        ManagedLedgerImpl ml = (ManagedLedgerImpl) ledger;
-        stats.entriesAddedCounter = ml.getEntriesAddedCounter();
-        stats.numberOfEntries = ml.getNumberOfEntries();
-        stats.totalSize = ml.getTotalSize();
-        stats.currentLedgerEntries = ml.getCurrentLedgerEntries();
-        stats.currentLedgerSize = ml.getCurrentLedgerSize();
-        stats.lastLedgerCreatedTimestamp = DATE_FORMAT.format(Instant.ofEpochMilli(ml.getLastLedgerCreatedTimestamp()));
-        if (ml.getLastLedgerCreationFailureTimestamp() != 0) {
-            stats.lastLedgerCreationFailureTimestamp = DATE_FORMAT
-                    .format(Instant.ofEpochMilli(ml.getLastLedgerCreationFailureTimestamp()));
+            stats.waitingCursorsCount = ml.getWaitingCursorsCount();
+            stats.pendingAddEntriesCount = ml.getPendingAddEntriesCount();
+
+            stats.lastConfirmedEntry = ml.getLastConfirmedEntry().toString();
+            stats.state = ml.getState().toString();
+
+            stats.ledgers = Lists.newArrayList();
+            ml.getLedgersInfo().forEach((id, li) -> {
+                LedgerInfo info = new LedgerInfo();
+                info.ledgerId = li.getLedgerId();
+                info.entries = li.getEntries();
+                info.size = li.getSize();
+                stats.ledgers.add(info);
+            });
+
+            stats.cursors = Maps.newTreeMap();
+            ml.getCursors().forEach(c -> {
+                DlogBasedManagedCursor cursor = (DlogBasedManagedCursor) c;
+                CursorStats cs = new CursorStats();
+                cs.markDeletePosition = cursor.getMarkDeletedPosition().toString();
+                cs.readPosition = cursor.getReadPosition().toString();
+                cs.waitingReadOp = cursor.hasPendingReadRequest();
+                cs.pendingReadOps = cursor.getPendingReadOpsCount();
+                cs.messagesConsumedCounter = cursor.getMessagesConsumedCounter();
+                cs.cursorLedger = cursor.getCursorLedger();
+                cs.cursorLedgerLastEntry = cursor.getCursorLedgerLastEntry();
+                cs.individuallyDeletedMessages = cursor.getIndividuallyDeletedMessages();
+                cs.lastLedgerSwitchTimestamp = DATE_FORMAT.format(Instant.ofEpochMilli(cursor.getLastLedgerSwitchTimestamp()));
+                cs.state = cursor.getState();
+                cs.numberOfEntriesSinceFirstNotAckedMessage = cursor.getNumberOfEntriesSinceFirstNotAckedMessage();
+                cs.totalNonContiguousDeletedMessagesRange = cursor.getTotalNonContiguousDeletedMessagesRange();
+                cs.properties = cursor.getProperties();
+                stats.cursors.put(cursor.getName(), cs);
+            });
+        }else{
+            ManagedLedgerImpl ml = (ManagedLedgerImpl) ledger;
+            stats.entriesAddedCounter = ml.getEntriesAddedCounter();
+            stats.numberOfEntries = ml.getNumberOfEntries();
+            stats.totalSize = ml.getTotalSize();
+            stats.currentLedgerEntries = ml.getCurrentLedgerEntries();
+            stats.currentLedgerSize = ml.getCurrentLedgerSize();
+            stats.lastLedgerCreatedTimestamp = DATE_FORMAT.format(Instant.ofEpochMilli(ml.getLastLedgerCreatedTimestamp()));
+            if (ml.getLastLedgerCreationFailureTimestamp() != 0) {
+                stats.lastLedgerCreationFailureTimestamp = DATE_FORMAT
+                        .format(Instant.ofEpochMilli(ml.getLastLedgerCreationFailureTimestamp()));
+            }
+
+            stats.waitingCursorsCount = ml.getWaitingCursorsCount();
+            stats.pendingAddEntriesCount = ml.getPendingAddEntriesCount();
+
+            stats.lastConfirmedEntry = ml.getLastConfirmedEntry().toString();
+            stats.state = ml.getState().toString();
+
+            stats.ledgers = Lists.newArrayList();
+            ml.getLedgersInfo().forEach((id, li) -> {
+                LedgerInfo info = new LedgerInfo();
+                info.ledgerId = li.getLedgerId();
+                info.entries = li.getEntries();
+                info.size = li.getSize();
+                stats.ledgers.add(info);
+            });
+
+            stats.cursors = Maps.newTreeMap();
+            ml.getCursors().forEach(c -> {
+                ManagedCursorImpl cursor = (ManagedCursorImpl) c;
+                CursorStats cs = new CursorStats();
+                cs.markDeletePosition = cursor.getMarkDeletedPosition().toString();
+                cs.readPosition = cursor.getReadPosition().toString();
+                cs.waitingReadOp = cursor.hasPendingReadRequest();
+                cs.pendingReadOps = cursor.getPendingReadOpsCount();
+                cs.messagesConsumedCounter = cursor.getMessagesConsumedCounter();
+                cs.cursorLedger = cursor.getCursorLedger();
+                cs.cursorLedgerLastEntry = cursor.getCursorLedgerLastEntry();
+                cs.individuallyDeletedMessages = cursor.getIndividuallyDeletedMessages();
+                cs.lastLedgerSwitchTimestamp = DATE_FORMAT.format(Instant.ofEpochMilli(cursor.getLastLedgerSwitchTimestamp()));
+                cs.state = cursor.getState();
+                cs.numberOfEntriesSinceFirstNotAckedMessage = cursor.getNumberOfEntriesSinceFirstNotAckedMessage();
+                cs.totalNonContiguousDeletedMessagesRange = cursor.getTotalNonContiguousDeletedMessagesRange();
+                cs.properties = cursor.getProperties();
+                stats.cursors.put(cursor.getName(), cs);
+            });
         }
 
-        stats.waitingCursorsCount = ml.getWaitingCursorsCount();
-        stats.pendingAddEntriesCount = ml.getPendingAddEntriesCount();
-
-        stats.lastConfirmedEntry = ml.getLastConfirmedEntry().toString();
-        stats.state = ml.getState().toString();
-
-        stats.ledgers = Lists.newArrayList();
-        ml.getLedgersInfo().forEach((id, li) -> {
-            LedgerInfo info = new LedgerInfo();
-            info.ledgerId = li.getLedgerId();
-            info.entries = li.getEntries();
-            info.size = li.getSize();
-            stats.ledgers.add(info);
-        });
-
-        stats.cursors = Maps.newTreeMap();
-        ml.getCursors().forEach(c -> {
-            ManagedCursorImpl cursor = (ManagedCursorImpl) c;
-            CursorStats cs = new CursorStats();
-            cs.markDeletePosition = cursor.getMarkDeletedPosition().toString();
-            cs.readPosition = cursor.getReadPosition().toString();
-            cs.waitingReadOp = cursor.hasPendingReadRequest();
-            cs.pendingReadOps = cursor.getPendingReadOpsCount();
-            cs.messagesConsumedCounter = cursor.getMessagesConsumedCounter();
-            cs.cursorLedger = cursor.getCursorLedger();
-            cs.cursorLedgerLastEntry = cursor.getCursorLedgerLastEntry();
-            cs.individuallyDeletedMessages = cursor.getIndividuallyDeletedMessages();
-            cs.lastLedgerSwitchTimestamp = DATE_FORMAT.format(Instant.ofEpochMilli(cursor.getLastLedgerSwitchTimestamp()));
-            cs.state = cursor.getState();
-            cs.numberOfEntriesSinceFirstNotAckedMessage = cursor.getNumberOfEntriesSinceFirstNotAckedMessage();
-            cs.totalNonContiguousDeletedMessagesRange = cursor.getTotalNonContiguousDeletedMessagesRange();
-            cs.properties = cursor.getProperties();
-            stats.cursors.put(cursor.getName(), cs);
-        });
         return stats;
     }
 

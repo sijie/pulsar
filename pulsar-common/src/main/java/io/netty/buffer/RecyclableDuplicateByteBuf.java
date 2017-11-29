@@ -23,6 +23,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.channels.FileChannel;
 import java.nio.channels.GatheringByteChannel;
 import java.nio.channels.ScatteringByteChannel;
 
@@ -144,6 +145,11 @@ public class RecyclableDuplicateByteBuf extends AbstractRecyclableDerivedByteBuf
     }
 
     @Override
+    protected short _getShortLE(int i) {
+        return 0;
+    }
+
+    @Override
     public int getUnsignedMedium(int index) {
         return _getUnsignedMedium(index);
     }
@@ -151,6 +157,11 @@ public class RecyclableDuplicateByteBuf extends AbstractRecyclableDerivedByteBuf
     @Override
     protected int _getUnsignedMedium(int index) {
         return origBuffer.getUnsignedMedium(index);
+    }
+
+    @Override
+    protected int _getUnsignedMediumLE(int i) {
+        return 0;
     }
 
     @Override
@@ -164,6 +175,11 @@ public class RecyclableDuplicateByteBuf extends AbstractRecyclableDerivedByteBuf
     }
 
     @Override
+    protected int _getIntLE(int i) {
+        return 0;
+    }
+
+    @Override
     public long getLong(int index) {
         return _getLong(index);
     }
@@ -171,6 +187,11 @@ public class RecyclableDuplicateByteBuf extends AbstractRecyclableDerivedByteBuf
     @Override
     protected long _getLong(int index) {
         return origBuffer.getLong(index);
+    }
+
+    @Override
+    protected long _getLongLE(int i) {
+        return 0;
     }
 
     @Override
@@ -219,6 +240,11 @@ public class RecyclableDuplicateByteBuf extends AbstractRecyclableDerivedByteBuf
     }
 
     @Override
+    protected void _setShortLE(int i, int i1) {
+
+    }
+
+    @Override
     public ByteBuf setMedium(int index, int value) {
         _setMedium(index, value);
         return this;
@@ -227,6 +253,11 @@ public class RecyclableDuplicateByteBuf extends AbstractRecyclableDerivedByteBuf
     @Override
     protected void _setMedium(int index, int value) {
         origBuffer.setMedium(index, value);
+    }
+
+    @Override
+    protected void _setMediumLE(int i, int i1) {
+
     }
 
     @Override
@@ -241,6 +272,11 @@ public class RecyclableDuplicateByteBuf extends AbstractRecyclableDerivedByteBuf
     }
 
     @Override
+    protected void _setIntLE(int i, int i1) {
+
+    }
+
+    @Override
     public ByteBuf setLong(int index, long value) {
         _setLong(index, value);
         return this;
@@ -249,6 +285,11 @@ public class RecyclableDuplicateByteBuf extends AbstractRecyclableDerivedByteBuf
     @Override
     protected void _setLong(int index, long value) {
         origBuffer.setLong(index, value);
+    }
+
+    @Override
+    protected void _setLongLE(int i, long l) {
+
     }
 
     @Override
@@ -281,6 +322,11 @@ public class RecyclableDuplicateByteBuf extends AbstractRecyclableDerivedByteBuf
     }
 
     @Override
+    public int getBytes(int i, FileChannel fileChannel, long l, int i1) throws IOException {
+        return 0;
+    }
+
+    @Override
     public int setBytes(int index, InputStream in, int length) throws IOException {
         return origBuffer.setBytes(index, in, length);
     }
@@ -288,6 +334,11 @@ public class RecyclableDuplicateByteBuf extends AbstractRecyclableDerivedByteBuf
     @Override
     public int setBytes(int index, ScatteringByteChannel in, int length) throws IOException {
         return origBuffer.setBytes(index, in, length);
+    }
+
+    @Override
+    public int setBytes(int i, FileChannel fileChannel, long l, int i1) throws IOException {
+        return 0;
     }
 
     @Override
@@ -310,12 +361,10 @@ public class RecyclableDuplicateByteBuf extends AbstractRecyclableDerivedByteBuf
         return unwrap().nioBuffer(index, length);
     }
 
-    @Override
     public int forEachByte(int index, int length, ByteBufProcessor processor) {
         return origBuffer.forEachByte(index, length, processor);
     }
 
-    @Override
     public int forEachByteDesc(int index, int length, ByteBufProcessor processor) {
         return origBuffer.forEachByteDesc(index, length, processor);
     }

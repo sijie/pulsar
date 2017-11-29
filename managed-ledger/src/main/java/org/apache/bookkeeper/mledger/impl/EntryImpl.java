@@ -153,4 +153,8 @@ final class EntryImpl extends AbstractReferenceCounted implements Entry, Compara
         RECYCLER.recycle(this, recyclerHandle);
     }
 
+    @Override
+    public ReferenceCounted touch(Object o) {
+        return this;
+    }
 }

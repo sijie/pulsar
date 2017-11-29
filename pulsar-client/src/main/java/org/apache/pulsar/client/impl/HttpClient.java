@@ -99,7 +99,7 @@ public class HttpClient implements Closeable {
                 }
 
                 confBuilder.setSslContext(sslCtx);
-                confBuilder.setAcceptAnyCertificate(tlsAllowInsecureConnection);
+//                confBuilder.setAcceptAnyCertificate(tlsAllowInsecureConnection);
             } catch (Exception e) {
                 throw new PulsarClientException.InvalidConfigurationException(e);
             }

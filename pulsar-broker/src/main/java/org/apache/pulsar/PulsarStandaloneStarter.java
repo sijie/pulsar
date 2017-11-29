@@ -20,9 +20,15 @@ package org.apache.pulsar;
 
 import static org.apache.commons.lang3.StringUtils.isBlank;
 
+import java.io.File;
 import java.io.FileInputStream;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
 
+import org.apache.commons.io.FileUtils;
+import org.apache.distributedlog.LocalDLMEmulator;
+import org.apache.distributedlog.admin.DistributedLogAdmin;
 import org.apache.pulsar.broker.PulsarService;
 import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.pulsar.broker.ServiceConfigurationUtils;
@@ -43,11 +49,20 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 
 public class PulsarStandaloneStarter {
+    static {
+        // org.apache.zookeeper.test.ClientBase uses FourLetterWordMain, from 3.5.3 four letter words
+        // are disabled by default due to security reasons
+        System.setProperty("zookeeper.4lw.commands.whitelist", "*");
+    }
 
     PulsarService broker;
     PulsarAdmin admin;
     LocalBookkeeperEnsemble bkEnsemble;
+    LocalDLMEmulator localDLMEmulator;
     ServiceConfiguration config;
+    int mlType;
+    private final List<File> tmpDirs = new ArrayList<File>();
+
 
     @Parameter(names = { "-c", "--config" }, description = "Configuration file path", required = true)
     private String configFile;
@@ -56,7 +71,7 @@ public class PulsarStandaloneStarter {
     private boolean wipeData = false;
 
     @Parameter(names = { "--num-bookies" }, description = "Number of local Bookies")
-    private int numOfBk = 1;
+    private int numOfBk = 3;
 
     @Parameter(names = { "--zookeeper-port" }, description = "Local zookeeper's port")
     private int zkPort = 2181;
@@ -107,6 +122,7 @@ public class PulsarStandaloneStarter {
 
         this.config = PulsarConfigurationLoader.create((new FileInputStream(configFile)), ServiceConfiguration.class);
         PulsarConfigurationLoader.isComplete(config);
+        mlType = config.getManagedLedgerDefaultImplType();
         // Set ZK server's host to localhost
         config.setZookeeperServers("127.0.0.1:" + zkPort);
         config.setGlobalZookeeperServers("127.0.0.1:" + zkPort);
@@ -121,20 +137,10 @@ public class PulsarStandaloneStarter {
             // Use advertised address from config file
         }
 
+
         Runtime.getRuntime().addShutdownHook(new Thread() {
             public void run() {
-                try {
-                    if (broker != null) {
-                        broker.close();
-                    }
-
-                    if (bkEnsemble != null) {
-                        bkEnsemble.stop();
-                    }
-                } catch (Exception e) {
-                    log.error("Shutdown failed: {}", e.getMessage());
-                }
-            }
+                close(); }
         });
     }
 
@@ -147,9 +153,28 @@ public class PulsarStandaloneStarter {
         log.debug("--- setup PulsarStandaloneStarter ---");
 
         if (!onlyBroker) {
-            // Start LocalBookKeeper
-            bkEnsemble = new LocalBookkeeperEnsemble(numOfBk, zkPort, bkPort, zkDir, bkDir, wipeData);
-            bkEnsemble.startStandalone();
+            if(mlType == 1) {
+                localDLMEmulator = LocalDLMEmulator.newBuilder()
+                       .numBookies(numOfBk)
+                       .zkHost("127.0.0.1")
+                       .zkPort(zkPort)
+                       .shouldStartZK(true)
+                        .zkTimeoutSec(100)
+                       .build();
+                localDLMEmulator.start();
+                log.info("start localDLMEmulator is finished");
+
+//          bind command: dlog admin bind -l /ledgers -s 127.0.0.1:2181 -c distributedlog://127.0.0.1:7000/messaging/my_namespace
+                // bind namespace admin is a tool, bind is a cmd
+                String bindOpts[] = "bind -l /ledgers -s 127.0.0.1:2181 -c distributedlog://127.0.0.1:2181/default_namespace".split(" ");
+                DistributedLogAdmin admin = new DistributedLogAdmin();
+                admin.run(bindOpts);
+
+            } else {
+                // Start LocalBookKeeper
+                bkEnsemble = new LocalBookkeeperEnsemble(numOfBk, zkPort, bkPort, zkDir, bkDir, wipeData);
+                bkEnsemble.startStandalone();
+            }
         }
 
         if (noBroker) {
@@ -158,6 +183,7 @@ public class PulsarStandaloneStarter {
 
         // load aspectj-weaver agent for instrumentation
         AgentLoader.loadAgentClass(Agent.class.getName(), null);
+
 
         // Start Broker
         broker = new PulsarService(config);
@@ -202,10 +228,35 @@ public class PulsarStandaloneStarter {
 
         log.debug("--- setup completed ---");
     }
+    public void close(){
+        try {
+            if (broker != null) {
+                broker.close();
+            }
 
+            if (bkEnsemble != null) {
+                bkEnsemble.stop();
+            }
+            if (localDLMEmulator != null) {
+                localDLMEmulator.teardown();
+            }
+
+            for (File dir : tmpDirs) {
+                FileUtils.forceDeleteOnExit(dir);
+            }
+
+        } catch (Exception e) {
+            log.error("Shutdown failed: {}", e.getMessage());
+        }
+    }
+    //handle standalone start up exception
     public static void main(String args[]) throws Exception {
         // Start standalone
         PulsarStandaloneStarter standalone = new PulsarStandaloneStarter(args);
-        standalone.start();
+        try{
+            standalone.start();
+        } catch (Exception e){
+            standalone.close();
+        }
     }
 }
