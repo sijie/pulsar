@@ -29,13 +29,13 @@
     <relativePath>..</relativePath>
   </parent>
 
-  <artifactId>pulsar-client</artifactId>
-  <name>Pulsar Client Java</name>
+  <artifactId>pulsar-client-admin-shaded</artifactId>
+  <name>Pulsar Client Admin Shaded</name>
 
   <dependencies>
     <dependency>
       <groupId>${project.groupId}</groupId>
-      <artifactId>pulsar-client-original</artifactId>
+      <artifactId>pulsar-client-admin</artifactId>
       <version>${project.parent.version}</version>
     </dependency>
   </dependencies>
@@ -62,7 +62,8 @@
                   <include>org.apache.pulsar:pulsar-common</include>
                   <include>org.apache.pulsar:pulsar-checksum</include>
                   <include>org.apache.pulsar:pulsar-client-original</include>
-                  <!-- client dependencies -->
+                  <include>org.apache.pulsar:pulsar-client-admin</include>
+                  <!-- client dependencies as below -->
                   <include>org.apache.commons:commons-lang3</include>
                   <include>commons-codec:commons-codec</include>
                   <include>commons-collections:commons-collections</include>
@@ -90,7 +91,7 @@
                   </includes>
                 </filter>
                 <filter>
-                  <artifact>org.apache.pulsar:pulsar-client-original</artifact>
+                  <artifact>org.apache.pulsar:pulsar-client-admin</artifact>
                   <includes>
                     <include>**</include>
                   </includes>
