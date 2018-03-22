@@ -21,6 +21,10 @@ package org.apache.pulsar.broker.service;
 import static com.google.common.base.Preconditions.checkArgument;
 import static org.apache.pulsar.common.api.Commands.readChecksum;
 
+import io.prometheus.client.Collector;
+import io.prometheus.client.CollectorRegistry;
+import io.prometheus.client.Gauge;
+import io.prometheus.client.Gauge.Child;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -138,6 +142,16 @@ public class Consumer {
             // We don't need to keep track of pending acks if the subscription is not shared
             this.pendingAcks = null;
         }
+
+        TopicName name = TopicName.get(topicName);
+
+        Gauge.build("t_" + Collector.sanitizeMetricName(name.getLocalName()) + "_c_" + consumerName + "_" + System.currentTimeMillis() + "_" + "_permits", "-")
+            .create().setChild(new Child() {
+            @Override
+            public double get() {
+                return MESSAGE_PERMITS_UPDATER.get(Consumer.this);
+            }
+        }).register(CollectorRegistry.defaultRegistry);
     }
 
     public SubType subType() {
