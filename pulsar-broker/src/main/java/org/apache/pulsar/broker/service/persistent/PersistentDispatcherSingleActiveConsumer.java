@@ -22,6 +22,9 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import static org.apache.pulsar.broker.cache.ConfigurationCacheService.POLICIES;
 import static org.apache.pulsar.broker.service.persistent.PersistentTopic.MESSAGE_RATE_BACKOFF_MS;
 
+import io.prometheus.client.Collector;
+import io.prometheus.client.CollectorRegistry;
+import io.prometheus.client.Gauge;
 import java.util.List;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -61,6 +64,8 @@ public final class PersistentDispatcherSingleActiveConsumer extends AbstractDisp
     private final ServiceConfiguration serviceConfig;
     private ScheduledFuture<?> readOnActiveConsumerTask = null;
 
+    private final Gauge pauseCounter;
+
     public PersistentDispatcherSingleActiveConsumer(ManagedCursor cursor, SubType subscriptionType, int partitionIndex,
             PersistentTopic topic) {
         super(subscriptionType, partitionIndex, topic.getName());
@@ -70,6 +75,13 @@ public final class PersistentDispatcherSingleActiveConsumer extends AbstractDisp
         this.cursor = cursor;
         this.readBatchSize = MaxReadBatchSize;
         this.serviceConfig = topic.getBrokerService().pulsar().getConfiguration();
+
+        String consumerMetricPrefix = "t_"
+            + Collector.sanitizeMetricName(name)
+            + "_" + System.currentTimeMillis();
+
+        pauseCounter = Gauge.build(consumerMetricPrefix + "_read_pauses", "-")
+            .create().register(CollectorRegistry.defaultRegistry);
     }
 
     protected void scheduleReadOnActiveConsumer() {
@@ -223,23 +235,23 @@ public final class PersistentDispatcherSingleActiveConsumer extends AbstractDisp
     @Override
     public synchronized void consumerFlow(Consumer consumer, int additionalNumberOfMessages) {
         if (havePendingRead) {
-            if (log.isDebugEnabled()) {
-                log.debug("[{}-{}] Ignoring flow control message since we already have a pending read req", name,
+            if (log.isInfoEnabled()) {
+                log.info("[{}-{}] Ignoring flow control message since we already have a pending read req", name,
                         consumer);
             }
         } else if (ACTIVE_CONSUMER_UPDATER.get(this) != consumer) {
-            if (log.isDebugEnabled()) {
-                log.debug("[{}-{}] Ignoring flow control message since consumer is not active partition consumer", name,
+            if (log.isInfoEnabled()) {
+                log.info("[{}-{}] Ignoring flow control message since consumer is not active partition consumer", name,
                         consumer);
             }
         } else if (readOnActiveConsumerTask != null) {
-            if (log.isDebugEnabled()) {
-                log.debug("[{}-{}] Ignoring flow control message since consumer is waiting for cursor to be rewinded",
+            if (log.isInfoEnabled()) {
+                log.info("[{}-{}] Ignoring flow control message since consumer is waiting for cursor to be rewinded",
                         name, consumer);
             }
         } else {
-            if (log.isDebugEnabled()) {
-                log.debug("[{}-{}] Trigger new read after receiving flow control message", name, consumer);
+            if (log.isInfoEnabled()) {
+                log.info("[{}-{}] Trigger new read after receiving flow control message", name, consumer);
             }
             readMoreEntries(consumer);
         }
@@ -287,6 +299,7 @@ public final class PersistentDispatcherSingleActiveConsumer extends AbstractDisp
         // consumer can be null when all consumers are disconnected from broker.
         // so skip reading more entries if currently there is no active consumer.
         if (null == consumer) {
+            log.info("Consumer is null when reading more entries");
             return;
         }
 
@@ -352,6 +365,7 @@ public final class PersistentDispatcherSingleActiveConsumer extends AbstractDisp
             if (log.isDebugEnabled()) {
                 log.debug("[{}-{}] Consumer buffer is full, pause reading", name, consumer);
             }
+            pauseCounter.inc();
         }
     }
 
@@ -373,8 +387,8 @@ public final class PersistentDispatcherSingleActiveConsumer extends AbstractDisp
             log.error("[{}-{}] Error reading entries at {} : {} - Retrying to read in {} seconds", name, c,
                     cursor.getReadPosition(), exception.getMessage(), waitTimeMillis / 1000.0);
         } else {
-            if (log.isDebugEnabled()) {
-                log.debug("[{}-{}] Got throttled by bookies while reading at {} : {} - Retrying to read in {} seconds",
+            if (log.isInfoEnabled()) {
+                log.info("[{}-{}] Got throttled by bookies while reading at {} : {} - Retrying to read in {} seconds",
                         name, c, cursor.getReadPosition(), exception.getMessage(), waitTimeMillis / 1000.0);
             }
         }
@@ -389,8 +403,8 @@ public final class PersistentDispatcherSingleActiveConsumer extends AbstractDisp
                 Consumer currentConsumer = ACTIVE_CONSUMER_UPDATER.get(this);
                 // we should retry the read if we have an active consumer and there is no pending read
                 if (currentConsumer != null && !havePendingRead) {
-                    if (log.isDebugEnabled()) {
-                        log.debug("[{}-{}] Retrying read operation", name, c);
+                    if (log.isInfoEnabled()) {
+                        log.info("[{}-{}] Retrying read operation", name, c);
                     }
                     readMoreEntries(currentConsumer);
                 } else {

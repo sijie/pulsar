@@ -105,6 +105,11 @@ public class Consumer {
 
     private final Map<String, String> metadata;
 
+    // Metrics
+    private final Gauge flowCounter;
+    private final Gauge permitRecvCounter;
+    private final Gauge permitSentCounter;
+
     public Consumer(Subscription subscription, SubType subType, String topicName, long consumerId,
                     int priorityLevel, String consumerName,
                     int maxUnackedMessages, ServerCnx cnx, String appId,
@@ -145,13 +150,25 @@ public class Consumer {
 
         TopicName name = TopicName.get(topicName);
 
-        Gauge.build("t_" + Collector.sanitizeMetricName(name.getLocalName()) + "_c_" + consumerName + "_" + System.currentTimeMillis() + "_" + "_permits", "-")
+        String consumerMetricPrefix = "t_"
+            + Collector.sanitizeMetricName(name.getLocalName())
+            + "_c_" + consumerName
+            + "_" + System.currentTimeMillis();
+
+        Gauge.build(consumerMetricPrefix + "_permits", "-")
             .create().setChild(new Child() {
             @Override
             public double get() {
                 return MESSAGE_PERMITS_UPDATER.get(Consumer.this);
             }
         }).register(CollectorRegistry.defaultRegistry);
+
+        this.flowCounter = Gauge.build(consumerMetricPrefix + "_flow_requests", "-")
+            .create().register(CollectorRegistry.defaultRegistry);
+        this.permitSentCounter = Gauge.build(consumerMetricPrefix + "_permits_sent", "-")
+            .create().register(CollectorRegistry.defaultRegistry);
+        this.permitRecvCounter = Gauge.build(consumerMetricPrefix + "_permits_recv", "-")
+            .create().register(CollectorRegistry.defaultRegistry);
     }
 
     public SubType subType() {
@@ -314,13 +331,22 @@ public class Consumer {
         }
         // reduce permit and increment unackedMsg count with total number of messages in batch-msgs
         int permits = MESSAGE_PERMITS_UPDATER.addAndGet(this, -permitsToReduce);
+
+        if (log.isInfoEnabled()) {
+            log.info("[{}-{}] [{}] {} message permits reduced, now is {}",
+                topicName, subscription, consumerId,
+                permitsToReduce, permits);
+        }
+
+        permitSentCounter.inc(permitsToReduce);
+
         incrementUnackedMessages(permitsToReduce);
         if (unsupportedVersion) {
             throw new PulsarServerException("Consumer does not support batch-message");
         }
         if (permits < 0) {
-            if (log.isDebugEnabled()) {
-                log.debug("[{}-{}] [{}] message permits dropped below 0 - {}", topicName, subscription, consumerId,
+            if (log.isInfoEnabled()) {
+                log.info("[{}-{}] [{}] message permits dropped below 0 - {}", topicName, subscription, consumerId,
                         permits);
             }
         }
@@ -416,8 +442,11 @@ public class Consumer {
             oldPermits = PERMITS_RECEIVED_WHILE_CONSUMER_BLOCKED_UPDATER.getAndAdd(this, additionalNumberOfMessages);
         }
 
-        if (log.isDebugEnabled()) {
-            log.debug("[{}-{}] Added more flow control message permits {} (old was: {}), blocked = ", topicName,
+        flowCounter.inc();
+        permitRecvCounter.inc(additionalNumberOfMessages);
+
+        if (log.isInfoEnabled()) {
+            log.info("[{}-{}] Added more flow control message permits {} (old was: {}), blocked = ", topicName,
                     subscription, additionalNumberOfMessages, oldPermits, blockedConsumerOnUnackedMsgs);
         }
 
