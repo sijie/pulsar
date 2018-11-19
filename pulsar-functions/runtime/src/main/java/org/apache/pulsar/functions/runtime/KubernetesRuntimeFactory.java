@@ -20,8 +20,6 @@
 package org.apache.pulsar.functions.runtime;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
 import io.kubernetes.client.ApiClient;
 import io.kubernetes.client.Configuration;
 import io.kubernetes.client.apis.AppsV1Api;
@@ -40,7 +38,6 @@ import org.apache.pulsar.functions.proto.Function;
 import org.apache.pulsar.functions.secretsproviderconfigurator.SecretsProviderConfigurator;
 
 import java.lang.reflect.Field;
-import java.lang.reflect.Type;
 import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -79,7 +76,6 @@ public class KubernetesRuntimeFactory implements RuntimeFactory {
     private final String javaInstanceJarFile;
     private final String pythonInstanceFile;
     private final String extraDependenciesDir;
-    private final String prometheusMetricsServerJarFile;
     private final SecretsProviderConfigurator secretsProviderConfigurator;
     private final String logDirectory = "logs/functions";
     private Timer changeConfigMapTimer;
@@ -146,7 +142,6 @@ public class KubernetesRuntimeFactory implements RuntimeFactory {
         this.authConfig = authConfig;
         this.javaInstanceJarFile = this.kubernetesInfo.getPulsarRootDir() + "/instances/java-instance.jar";
         this.pythonInstanceFile = this.kubernetesInfo.getPulsarRootDir() + "/instances/python-instance/python_instance_main.py";
-        this.prometheusMetricsServerJarFile = this.kubernetesInfo.getPulsarRootDir() + "/instances/PrometheusMetricsServer.jar";
         this.expectedMetricsCollectionInterval = expectedMetricsCollectionInterval == null ? -1 : expectedMetricsCollectionInterval;
         this.secretsProviderConfigurator = secretsProviderConfigurator;
     }
@@ -185,7 +180,6 @@ public class KubernetesRuntimeFactory implements RuntimeFactory {
             instanceConfig,
             instanceFile,
             extraDependenciesDir,
-            prometheusMetricsServerJarFile,
             logDirectory,
             codePkgUrl,
             originalCodeFileName,
@@ -204,12 +198,12 @@ public class KubernetesRuntimeFactory implements RuntimeFactory {
     @Override
     public void doAdmissionChecks(Function.FunctionDetails functionDetails) {
         KubernetesRuntime.doChecks(functionDetails);
-        if (!StringUtils.isEmpty(functionDetails.getSecretsMap())) {
-            Type type = new TypeToken<Map<String, Object>>() {
-            }.getType();
-            Map<String, Object> secretsMap = new Gson().fromJson(functionDetails.getSecretsMap(), type);
-            secretsProviderConfigurator.validateSecretMap(secretsMap);
+        try {
+            setupClient();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
+        secretsProviderConfigurator.doAdmissionChecks(appsClient, coreClient, kubernetesInfo.getJobNamespace(), functionDetails);
     }
 
     @VisibleForTesting
