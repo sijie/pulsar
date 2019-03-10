@@ -23,8 +23,12 @@ set -e
 
 BUILD_IMAGE_NAME="${BUILD_IMAGE_NAME:-apachepulsar/pulsar-build}"
 
+BINDIR=`dirname "$0"`
+PULSAR_HOME=`cd ${BINDIR}/../..;pwd`
+
 ROOT_DIR=$(git rev-parse --show-toplevel)
 cd $ROOT_DIR
+
 
 PYTHON_VERSIONS=(
    '2.7 cp27-cp27mu'
@@ -71,6 +75,6 @@ for line in "${PYTHON_VERSIONS[@]}"; do
 
     IMAGE_NAME=$BUILD_IMAGE_NAME:manylinux-$PYTHON_SPEC
 
-    echo "Using image: $IMAGE_NAME"
-    docker run -i -v $PWD:/pulsar $IMAGE_NAME /pulsar/pulsar-client-cpp/docker/build-wheel-file-within-docker.sh
+    echo "Using image: $IMAGE_NAME at volume $PWD - ROOT DIR: $ROOT_DIR - PULSAR HOME: $PULSAR_HOME"
+    docker run -i -v $PULSAR_HOME:/pulsar $IMAGE_NAME /pulsar/pulsar-client-cpp/docker/build-wheel-file-within-docker.sh
 done
