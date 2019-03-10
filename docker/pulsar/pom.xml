@@ -97,7 +97,9 @@
                   <goal>run</goal>
                 </goals>
                 <configuration>
+                  <!--
                   <skip>${skipBuildPythonClient}</skip>
+                  -->
                   <tasks>
                     <echo>copy python wheel file</echo>
                     <mkdir dir="${basedir}/target/python-client"/>
