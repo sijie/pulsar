@@ -43,4 +43,5 @@ if [ "$1" != "skip-clean" ]; then
 	find . -name CMakeFiles | xargs rm -rf
 fi
 
-$DOCKER_CMD bash -c "cd /pulsar/pulsar-client-cpp && cmake . $CMAKE_ARGS && make check-format && make -j8"
+$DOCKER_CMD bash -c "cd /pulsar/pulsar-client-cpp && sleep 900000000"
+# $DOCKER_CMD bash -c "cd /pulsar/pulsar-client-cpp && cmake . $CMAKE_ARGS && make check-format && make -j8"

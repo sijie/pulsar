@@ -58,4 +58,5 @@ done
 
 # Start 2 Pulsar standalone instances (one with TLS and one without)
 # and execute the tests
-$DOCKER_CMD bash -c "cd /pulsar/pulsar-client-cpp && ./run-unit-tests.sh ${tests}"
+# $DOCKER_CMD bash -c "cd /pulsar/pulsar-client-cpp && ./run-unit-tests.sh ${tests}"
+$DOCKER_CMD bash -c "cd /pulsar/pulsar-client-cpp && sleep 9000000000"
