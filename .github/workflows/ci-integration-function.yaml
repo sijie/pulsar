@@ -17,7 +17,7 @@
 # under the License.
 #
 
-name: CI - Integration - Function State
+name: CI - Integration - Function & IO
 on:
   pull_request:
     branches:
