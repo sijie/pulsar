@@ -45,12 +45,12 @@ import org.testng.annotations.Test;
 public class ConsumerImplTest {
 
 
-    private final ExecutorProvider executorProvider = new ExecutorProvider(1, new DefaultThreadFactory("ConsumerImplTest"));
+    private final ExecutorProvider executorProvider = new ExecutorProvider(1,"ConsumerImplTest");
     private ConsumerImpl<byte[]> consumer;
     private ConsumerConfigurationData consumerConf;
 
     @BeforeMethod
-    public void setUp() throws PulsarClientException.InvalidConfigurationException {
+    public void setUp() {
         consumerConf = new ConsumerConfigurationData<>();
         PulsarClientImpl client = ClientTestFixtures.createPulsarClientMock();
         ClientConfigurationData clientConf = client.getConfiguration();

@@ -18,17 +18,32 @@
  */
 package org.apache.pulsar.client.impl;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkState;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMap.Builder;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Queues;
-
 import io.netty.util.Timeout;
 import io.netty.util.TimerTask;
+import org.apache.commons.lang3.tuple.Pair;
+import org.apache.pulsar.client.api.Consumer;
+import org.apache.pulsar.client.api.ConsumerStats;
+import org.apache.pulsar.client.api.Message;
+import org.apache.pulsar.client.api.MessageId;
+import org.apache.pulsar.client.api.Messages;
+import org.apache.pulsar.client.api.PulsarClientException;
+import org.apache.pulsar.client.api.PulsarClientException.NotSupportedException;
+import org.apache.pulsar.client.api.Schema;
+import org.apache.pulsar.client.api.SubscriptionType;
+import org.apache.pulsar.client.impl.conf.ConsumerConfigurationData;
+import org.apache.pulsar.client.impl.transaction.TransactionImpl;
+import org.apache.pulsar.client.util.ConsumerName;
+import org.apache.pulsar.client.util.ExecutorProvider;
+import org.apache.pulsar.common.api.proto.CommandAck.AckType;
+import org.apache.pulsar.common.naming.TopicName;
+import org.apache.pulsar.common.util.FutureUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -52,25 +67,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import org.apache.commons.lang3.tuple.Pair;
-import org.apache.pulsar.client.api.Consumer;
-import org.apache.pulsar.client.api.ConsumerStats;
-import org.apache.pulsar.client.api.Message;
-import org.apache.pulsar.client.api.MessageId;
-import org.apache.pulsar.client.api.Messages;
-import org.apache.pulsar.client.api.PulsarClientException;
-import org.apache.pulsar.client.api.PulsarClientException.NotSupportedException;
-import org.apache.pulsar.client.api.Schema;
-import org.apache.pulsar.client.api.SubscriptionType;
-import org.apache.pulsar.client.impl.conf.ConsumerConfigurationData;
-import org.apache.pulsar.client.impl.transaction.TransactionImpl;
-import org.apache.pulsar.client.util.ConsumerName;
-import org.apache.pulsar.client.util.ExecutorProvider;
-import org.apache.pulsar.common.api.proto.CommandAck.AckType;
-import org.apache.pulsar.common.naming.TopicName;
-import org.apache.pulsar.common.util.FutureUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkState;
 
 public class MultiTopicsConsumerImpl<T> extends ConsumerBase<T> {
 
@@ -925,19 +923,11 @@ public class MultiTopicsConsumerImpl<T> extends ConsumerBase<T> {
                     partitionIndex -> {
                         String partitionName = TopicName.get(topicName).getPartition(partitionIndex).toString();
                         CompletableFuture<Consumer<T>> subFuture = new CompletableFuture<>();
-                        ConsumerImpl<T> newConsumer = null;
-                        try {
-                            newConsumer = ConsumerImpl.newConsumerImpl(client, partitionName,
+                        ConsumerImpl<T> newConsumer = ConsumerImpl.newConsumerImpl(client, partitionName,
                                     configurationData, client.externalExecutorProvider(),
                                     partitionIndex, true, subFuture,
                                     startMessageId, schema, interceptors,
                                     createIfDoesNotExist, startMessageRollbackDurationInSec);
-                        } catch (PulsarClientException.InvalidConfigurationException e) {
-                            if (log.isDebugEnabled()) {
-                                log.debug("Deadletter topic on Key_Shared subscription type is not supported.");
-                            }
-                            subFuture.completeExceptionally(e);
-                        }
                         consumers.putIfAbsent(newConsumer.getTopic(), newConsumer);
                         return subFuture;
                     })
@@ -954,20 +944,11 @@ public class MultiTopicsConsumerImpl<T> extends ConsumerBase<T> {
             allTopicPartitionsNumber.incrementAndGet();
 
             CompletableFuture<Consumer<T>> subFuture = new CompletableFuture<>();
-            ConsumerImpl<T> newConsumer = null;
-            try {
-                newConsumer = ConsumerImpl.newConsumerImpl(client, topicName, internalConfig,
+            ConsumerImpl<T> newConsumer = ConsumerImpl.newConsumerImpl(client, topicName, internalConfig,
                         client.externalExecutorProvider(), -1,
                         true, subFuture, null, schema, interceptors,
                         createIfDoesNotExist);
                 consumers.putIfAbsent(newConsumer.getTopic(), newConsumer);
-
-            } catch (PulsarClientException.InvalidConfigurationException e) {
-                if (log.isDebugEnabled()) {
-                    log.debug("Deadletter topic on Key_Shared subscription type is not supported.");
-                }
-                subFuture.completeExceptionally(e);
-            }
 
             futureList = Collections.singletonList(subFuture);
         }
@@ -1215,9 +1196,15 @@ public class MultiTopicsConsumerImpl<T> extends ConsumerBase<T> {
     private CompletableFuture<Void> subscribeIncreasedTopicPartitions(String topicName) {
         CompletableFuture<Void> future = new CompletableFuture<>();
 
+        //Drop the disconnected consumers to allow the auto discovery
+        consumers.entrySet().removeIf(e -> TopicName.get(e.getKey()).getPartitionedTopicName().equals(topicName) && !e.getValue().isConnected());
+        final int connectedPartitions = Long.valueOf(consumers.entrySet().stream().filter(e -> e.getKey().contains(topicName)).count()).intValue();
+        allTopicPartitionsNumber.set(allTopicPartitionsNumber.get() - (topics.get(topicName) - connectedPartitions));
+        topics.put(topicName, connectedPartitions);
+
         client.getPartitionsForTopic(topicName).thenCompose(list -> {
             int oldPartitionNumber = topics.get(topicName);
-            int currentPartitionNumber = list.size();
+            int currentPartitionNumber = Long.valueOf(list.stream().filter(t -> TopicName.get(t).isPartitioned()).count()).intValue();
 
             if (log.isDebugEnabled()) {
                 log.debug("[{}] partitions number. old: {}, new: {}",
@@ -1239,19 +1226,11 @@ public class MultiTopicsConsumerImpl<T> extends ConsumerBase<T> {
                         int partitionIndex = TopicName.getPartitionIndex(partitionName);
                         CompletableFuture<Consumer<T>> subFuture = new CompletableFuture<>();
                         ConsumerConfigurationData<T> configurationData = getInternalConsumerConfig();
-                        ConsumerImpl<T> newConsumer = null;
-                        try {
-                            newConsumer = ConsumerImpl.newConsumerImpl(
+                        ConsumerImpl<T> newConsumer = ConsumerImpl.newConsumerImpl(
                                 client, partitionName, configurationData,
                                 client.externalExecutorProvider(),
                                 partitionIndex, true, subFuture, null, schema, interceptors,
                                 true /* createTopicIfDoesNotExist */);
-                        } catch (PulsarClientException.InvalidConfigurationException e) {
-                            if (log.isDebugEnabled()) {
-                                log.debug("Deadletter topic on Key_Shared subscription type is not supported.");
-                            }
-                            subFuture.completeExceptionally(e);
-                        }
                         synchronized (pauseMutex) {
                             if (paused) {
                                 newConsumer.pause();

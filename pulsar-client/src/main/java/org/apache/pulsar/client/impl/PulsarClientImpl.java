@@ -145,8 +145,8 @@ public class PulsarClientImpl implements PulsarClient {
         this.clientClock = conf.getClock();
         conf.getAuthentication().start();
         this.cnxPool = cnxPool;
-        externalExecutorProvider = new ExecutorProvider(conf.getNumListenerThreads(), getThreadFactory("pulsar-external-listener"));
-        internalExecutorService = new ExecutorProvider(conf.getNumIoThreads(), getThreadFactory("pulsar-client-internal"));
+        externalExecutorProvider = new ExecutorProvider(conf.getNumListenerThreads(), "pulsar-external-listener");
+        internalExecutorService = new ExecutorProvider(conf.getNumIoThreads(), "pulsar-client-internal");
         if (conf.getServiceUrl().startsWith("http")) {
             lookup = new HttpLookupService(conf, eventLoopGroup);
         } else {
@@ -426,18 +426,11 @@ public class PulsarClientImpl implements PulsarClient {
                         externalExecutorProvider, consumerSubscribedFuture, metadata.partitions, schema, interceptors);
             } else {
                 int partitionIndex = TopicName.getPartitionIndex(topic);
-                try {
-                    consumer = ConsumerImpl.newConsumerImpl(PulsarClientImpl.this, topic, conf, externalExecutorProvider, partitionIndex, false,
-                            consumerSubscribedFuture,null, schema, interceptors,
-                            true /* createTopicIfDoesNotExist */);
-                    consumers.add(consumer);
-                } catch (PulsarClientException.InvalidConfigurationException e) {
-                    if (log.isDebugEnabled()) {
-                        log.debug("Deadletter topic on Key_Shared subscription type is not supported.");
-                    }
-                    consumerSubscribedFuture.completeExceptionally(e);
-                }
+                consumer = ConsumerImpl.newConsumerImpl(PulsarClientImpl.this, topic, conf, externalExecutorProvider, partitionIndex, false,
+                        consumerSubscribedFuture,null, schema, interceptors,
+                        true /* createTopicIfDoesNotExist */);
             }
+            consumers.add(consumer);
         }).exceptionally(ex -> {
             log.warn("[{}] Failed to get partitioned topic metadata", topic, ex);
             consumerSubscribedFuture.completeExceptionally(ex);
@@ -554,28 +547,21 @@ public class PulsarClientImpl implements PulsarClient {
                 return;
             }
             CompletableFuture<Consumer<T>> consumerSubscribedFuture = new CompletableFuture<>();
-            Reader<T> reader = null;
-            ConsumerBase<T> consumer = null;
+            Reader<T> reader;
+            ConsumerBase<T> consumer;
             if (metadata.partitions > 0) {
                 reader = new MultiTopicsReaderImpl<>(PulsarClientImpl.this,
                         conf, externalExecutorProvider, consumerSubscribedFuture, schema);
                 consumer = ((MultiTopicsReaderImpl<T>) reader).getMultiTopicsConsumer();
             } else {
-                try {
-                    reader = new ReaderImpl<>(PulsarClientImpl.this, conf, externalExecutorProvider, consumerSubscribedFuture, schema);
-                    consumer = ((ReaderImpl<T>) reader).getConsumer();
-                } catch (PulsarClientException.InvalidConfigurationException e) {
-                    if (log.isDebugEnabled()) {
-                        log.debug("Deadletter topic on Key_Shared subscription type is not supported.");
-                    }
-                    consumerSubscribedFuture.completeExceptionally(e);
-                }
+                reader = new ReaderImpl<>(PulsarClientImpl.this, conf, externalExecutorProvider, consumerSubscribedFuture, schema);
+                consumer = ((ReaderImpl<T>) reader).getConsumer();
             }
 
             consumers.add(consumer);
-            Reader<T> finalReader = reader;
+
             consumerSubscribedFuture.thenRun(() -> {
-                readerFuture.complete(finalReader);
+                readerFuture.complete(reader);
             }).exceptionally(ex -> {
                 log.warn("[{}] Failed to get create topic reader", topic, ex);
                 readerFuture.completeExceptionally(ex);
